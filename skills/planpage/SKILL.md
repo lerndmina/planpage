@@ -18,15 +18,15 @@ Publish self-contained HTML pages to the user's Zipline instance and return a sh
 
    ```bash
    bash "${CLAUDE_PLUGIN_ROOT}/skills/planpage/scripts/planpage.sh" publish <file.html> \
-     --slug <kebab-case-slug> [--expires 7d] [--password <pw>] [--no-open]
+     [--slug <name>] [--expires 7d] [--password <pw>] [--no-open]
    ```
 
 3. **Return the link** — the script prints the final URL on its last line. Give that URL to the user as the deliverable. If `PLANPAGE_RENDER_URL` is set and the proxy uses the README's config, swapping the link's `.html` for `.txt` serves the page source as plain text — worth mentioning when the user wants to inspect or copy the markup.
 
 ### Options
 
-- `--slug` — vanity slug; the page lives at `<origin>/<slug>.html`. Always pass one derived from the page title (e.g. `auth-refactor-plan`) unless the user wants a random unguessable link, in which case omit it.
-- Re-publishing with the same slug **updates in place**: the old file is deleted and the URL stays stable. This is the normal way to iterate on a plan.
+- `--slug` — custom slug; the page lives at `<origin>/<slug>.html`. **Omit it by default** so pages get random unguessable names — the index page already shows titles, and random names avoid collisions. Pass a slug only when the user explicitly asks for a memorable URL.
+- Re-publishing with `--slug` set to a page's existing name **updates in place**: the old file is deleted and the URL stays stable. This works for random names too — when iterating on an already-published page, look up its name in the registry (`planpage.sh list`, or the URL you returned earlier) and pass that as `--slug`.
 - `--expires` — relative expiry like `12h`, `7d`, `2w`; `never` disables. Defaults to `PLANPAGE_DEFAULT_EXPIRY` if set, otherwise never.
 - `--password` — protect sensitive pages (Zipline prompts viewers for it).
 - `--no-open` — skip auto-opening the page in the user's browser after publishing.
