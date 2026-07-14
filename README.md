@@ -74,6 +74,10 @@ plans.example.com {
 	redir @app https://your.zipline.host{uri} 302
 	@notget not method GET HEAD
 	respond @notget 405
+	# swap a page's .html for .txt to view its source as plain text
+	@txt path_regexp txt ^(.+)\.txt$
+	rewrite @txt /raw{http.regexp.txt.1}.html
+	header @txt >Content-Type "text/plain; charset=utf-8"
 	redir / /plans.html
 	rewrite * /raw{uri}
 	reverse_proxy zipline:3000 {

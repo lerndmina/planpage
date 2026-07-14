@@ -21,7 +21,7 @@ Publish self-contained HTML pages to the user's Zipline instance and return a sh
      --slug <kebab-case-slug> [--expires 7d] [--password <pw>] [--no-open]
    ```
 
-3. **Return the link** — the script prints the final URL on its last line. Give that URL to the user as the deliverable.
+3. **Return the link** — the script prints the final URL on its last line. Give that URL to the user as the deliverable. If `PLANPAGE_RENDER_URL` is set and the proxy uses the README's config, swapping the link's `.html` for `.txt` serves the page source as plain text — worth mentioning when the user wants to inspect or copy the markup.
 
 ### Options
 
