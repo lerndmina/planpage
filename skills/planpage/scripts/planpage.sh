@@ -87,7 +87,9 @@ html_title() { # html_title <file> — contents of <title>, or basename
 
 regen_index() {
   local tmp="${TMPDIR:-/tmp}/planpage-index.$$.html"
-  local now rows=""
+  # locals matter: bash scopes dynamically, and without these the read loop
+  # would clobber the caller do_publish's title/url before it echoes them
+  local now rows="" slug id title published expires url
   now="$(date +%Y-%m-%d)"
   # prune expired rows (best effort: relative expiries were resolved to dates at publish)
   while IFS=$'\t' read -r slug id title published expires url; do
@@ -177,12 +179,16 @@ do_publish() {
   fi
 
   local -a hdrs=(-H "authorization: $ZIPLINE_TOKEN")
-  [ -n "$slug" ] && hdrs+=(-H "x-zipline-filename: $slug.html")
+  # Zipline appends the extension itself — pass the bare slug
+  [ -n "$slug" ] && hdrs+=(-H "x-zipline-filename: $slug")
   [ -n "$expires" ] && hdrs+=(-H "x-zipline-deletes-at: $expires")
   [ -n "$password" ] && hdrs+=(-H "x-zipline-password: $password")
 
+  # upload with a relative path: on Windows (Git Bash), MSYS path conversion
+  # can't rewrite a Unix path embedded in curl's -F argument
   local resp
-  resp="$(curl -fsS "${hdrs[@]}" -F "file=@$file;type=text/html" "$ZIPLINE_URL/api/upload")" \
+  resp="$(cd "$(dirname "$file")" && \
+    curl -fsS "${hdrs[@]}" -F "file=@$(basename "$file");type=text/html" "$ZIPLINE_URL/api/upload")" \
     || die "upload failed (check ZIPLINE_URL/ZIPLINE_TOKEN)"
 
   local name id url
