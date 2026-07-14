@@ -65,14 +65,20 @@ Out of the box, planpage embraces that: Claude authors pure HTML+CSS pages (nati
 
 If you control the reverse proxy in front of Zipline, you can serve raw files from a **separate, cookie-isolated origin** with the sandbox stripped — full JS with none of the session-theft risk (the reason Zipline sandboxes raw files in the first place). Don't strip the CSP on your main Zipline domain itself.
 
-Caddy example (`plans.example.com` must point at the same box; a wildcard record works):
+Caddy example (`plans.example.com` must point at the same box; a wildcard record works). Beyond stripping the sandbox, this hardens the origin: every request is forced into `/raw/`, Zipline's app routes bounce back to the main domain, only GET/HEAD are accepted, and cookies/authorization headers are stripped before reaching Zipline — so even a future path-traversal bug would arrive credential-less:
 
 ```caddy
 plans.example.com {
 	encode gzip zstd
+	@app path /login /login/* /register /register/* /auth/* /invite/* /dashboard /dashboard/* /api /api/* /u/* /view/* /folder/* /files/*
+	redir @app https://your.zipline.host{uri} 302
+	@notget not method GET HEAD
+	respond @notget 405
 	redir / /plans.html
 	rewrite * /raw{uri}
 	reverse_proxy zipline:3000 {
+		header_up -Cookie
+		header_up -Authorization
 		header_down -Content-Security-Policy
 	}
 }
