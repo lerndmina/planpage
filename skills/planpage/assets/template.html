@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>{{TITLE}}</title>
+<style>
+  :root {
+    --bg: #fafafa; --surface: #ffffff; --fg: #1a1a1a; --muted: #666a73;
+    --line: #e4e4e8; --accent: #4756e6; --accent-soft: #eef0ff;
+    --ok: #1a7f4b; --ok-soft: #e4f5ec; --warn: #955d00; --warn-soft: #fdf2dd;
+    --risk: #b3261e; --risk-soft: #fdecea; --code-bg: #f1f1f4;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #101014; --surface: #17171c; --fg: #e8e8ea; --muted: #9a9aa2;
+      --line: #2a2a31; --accent: #8b96ff; --accent-soft: #23244a;
+      --ok: #58c48c; --ok-soft: #143526; --warn: #e2b45c; --warn-soft: #3a2d12;
+      --risk: #f2827a; --risk-soft: #3d1a17; --code-bg: #202027;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+         font: 16px/1.65 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 46rem; margin: 0 auto; padding: 3rem 1.25rem 5rem; }
+
+  header.doc { margin-bottom: 2.5rem; }
+  .doc h1 { font-size: 1.9rem; line-height: 1.25; margin: 0 0 .5rem; letter-spacing: -.02em; }
+  .doc .meta { color: var(--muted); font-size: .875rem; display: flex; gap: 1rem; flex-wrap: wrap; }
+
+  h2 { font-size: 1.25rem; margin: 2.5rem 0 .75rem; letter-spacing: -.01em; }
+  h3 { font-size: 1rem; margin: 1.75rem 0 .5rem; }
+  p { margin: .75rem 0; }
+  a { color: var(--accent); }
+
+  .badge { display: inline-block; font-size: .75rem; font-weight: 600; padding: .1rem .55rem;
+           border-radius: 99px; vertical-align: 2px; }
+  .badge.ok { color: var(--ok); background: var(--ok-soft); }
+  .badge.warn { color: var(--warn); background: var(--warn-soft); }
+  .badge.risk { color: var(--risk); background: var(--risk-soft); }
+  .badge.info { color: var(--accent); background: var(--accent-soft); }
+
+  details { border: 1px solid var(--line); border-radius: 10px; background: var(--surface);
+            margin: .75rem 0; padding: 0; }
+  details summary { cursor: pointer; padding: .8rem 1rem; font-weight: 600; user-select: none; }
+  details[open] summary { border-bottom: 1px solid var(--line); }
+  details .body { padding: .25rem 1rem .9rem; }
+
+  code { font: .85em ui-monospace, "Cascadia Code", Consolas, monospace;
+         background: var(--code-bg); padding: .12em .35em; border-radius: 5px; }
+  pre { background: var(--code-bg); border: 1px solid var(--line); border-radius: 10px;
+        padding: 1rem; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+
+  table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: .925rem; }
+  th { text-align: left; font-size: .72rem; text-transform: uppercase; letter-spacing: .06em;
+       color: var(--muted); padding: .45rem .7rem; border-bottom: 2px solid var(--line); }
+  td { padding: .55rem .7rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+
+  ol.steps { padding-left: 0; counter-reset: step; list-style: none; }
+  ol.steps > li { counter-increment: step; position: relative; padding: 0 0 1.1rem 2.6rem; }
+  ol.steps > li::before { content: counter(step); position: absolute; left: 0; top: .05rem;
+    width: 1.7rem; height: 1.7rem; border-radius: 50%; background: var(--accent-soft);
+    color: var(--accent); font-weight: 700; font-size: .85rem;
+    display: flex; align-items: center; justify-content: center; }
+  ol.steps > li:not(:last-child)::after { content: ""; position: absolute; left: .82rem;
+    top: 1.95rem; bottom: .15rem; width: 2px; background: var(--line); }
+
+  blockquote { margin: 1rem 0; padding: .6rem 1rem; border-left: 3px solid var(--accent);
+               background: var(--surface); border-radius: 0 8px 8px 0; color: var(--muted); }
+  hr { border: 0; border-top: 1px solid var(--line); margin: 2.5rem 0; }
+  footer { margin-top: 3rem; color: var(--muted); font-size: .8rem; }
+</style>
+</head>
+<body>
+<main>
+
+<header class="doc">
+  <h1>{{TITLE}}</h1>
+  <div class="meta">
+    <span>{{DATE}}</span>
+    <span>{{PROJECT}}</span>
+    <span class="badge info">{{STATUS}}</span>
+  </div>
+</header>
+
+<h2>Summary</h2>
+<p>{{One-paragraph statement of what this plan does and why. Lead with the outcome.}}</p>
+
+<h2>Approach</h2>
+<ol class="steps">
+  <li><strong>{{Step title}}</strong><br>{{What happens, which files, why this order.}}</li>
+  <li><strong>{{Step title}}</strong><br>{{...}}</li>
+</ol>
+
+<h2>Decisions</h2>
+<table>
+  <thead><tr><th>Decision</th><th>Choice</th><th>Why</th></tr></thead>
+  <tbody>
+    <tr><td>{{...}}</td><td>{{...}}</td><td>{{...}}</td></tr>
+  </tbody>
+</table>
+
+<h2>Risks &amp; open questions</h2>
+<details>
+  <summary>{{Risk or question}} <span class="badge warn">open</span></summary>
+  <div class="body"><p>{{Detail, mitigation, or what input is needed.}}</p></div>
+</details>
+
+<footer>Published with planpage.</footer>
+
+</main>
+</body>
+</html>

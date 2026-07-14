@@ -1,0 +1,13 @@
+{
+  "name": "planpage",
+  "description": "Publish styled single-page HTML plans, reports, and docs to your own Zipline instance — get back a clean shareable link instead of a markdown file.",
+  "version": "0.1.0",
+  "author": {
+    "name": "lerndmina",
+    "url": "https://github.com/lerndmina"
+  },
+  "homepage": "https://github.com/lerndmina/planpage",
+  "repository": "https://github.com/lerndmina/planpage",
+  "license": "MIT",
+  "keywords": ["zipline", "html", "publish", "plans", "sharing"]
+}
