@@ -50,7 +50,7 @@ planpage.sh unpublish <slug>   # delete a page (and refresh the index)
 planpage.sh index              # regenerate + republish the index page
 ```
 
-Every publish also regenerates an **index page** (slug `plans` by default) listing all live pages — mention its URL when the user asks what's published.
+Every publish also regenerates an **index page** (slug `plans` by default) listing all live pages — mention its URL when the user asks what's published. All state lives on the Zipline server (pages sit in a dedicated folder; titles are stored as file metadata), so `find`/`list`/update-in-place give the same answers from any machine with the same token.
 
 ## Authoring rules
 
@@ -63,7 +63,7 @@ Every publish also regenerates an **index page** (slug `plans` by default) listi
 
 - One fully self-contained file: inline all CSS; no external stylesheets, fonts, or trackers. External images only if the user supplied the URL.
 - Start from `assets/template.html` (same directory tree as this file) — replace the `{{...}}` placeholders and cut sections that don't apply. Deviate freely for non-plan content, but keep its conventions: light/dark via `prefers-color-scheme`, system font stack, ~46rem measure, `<meta name="robots" content="noindex">`.
-- Set a real `<title>` — the registry and index page use it.
+- Set a real `<title>` — it's stored on the Zipline server as the page's searchable title and shown on the index page.
 - These pages are public-by-obscurity links unless password-protected. Don't put secrets (tokens, internal hostnames, credentials) in a page; warn the user and use `--password` if the content is sensitive.
 
 ## Content guidance for plans

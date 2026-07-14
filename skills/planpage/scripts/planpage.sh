@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 # planpage — publish single-page HTML to a Zipline instance
 #
+# Zipline is the source of truth: every page lives in a dedicated Zipline
+# folder, and find/list/index/update-in-place all query the API. No local
+# state, so any machine with the same ZIPLINE_TOKEN sees the same pages.
+#
+# Requires: bash, curl, perl (JSON parsing + markdown mode).
+#
 # Required env:
 #   ZIPLINE_URL     e.g. https://shrt.zip (no trailing slash)
 #   ZIPLINE_TOKEN   a Zipline API token (Settings -> copy token)
@@ -8,22 +14,23 @@
 #   PLANPAGE_RENDER_URL      cookie-isolated unsandboxed origin, e.g. https://plans.wild.rip
 #                            (see README: Caddy/nginx strip the CSP sandbox there; enables JS)
 #   PLANPAGE_DEFAULT_EXPIRY  default deletes-at for pages, e.g. 7d (default: never)
-#   PLANPAGE_REGISTRY        registry file (default: ~/.planpage/registry.tsv)
+#   PLANPAGE_FOLDER          Zipline folder that holds the pages (default: planpage)
 #   PLANPAGE_INDEX_SLUG      slug of the auto-generated index page (default: plans)
 #
 # Usage:
-#   planpage.sh publish <file.html> [--slug my-plan] [--title "My plan"]
+#   planpage.sh publish <file.html|file.md> [--slug my-plan] [--title "My plan"]
 #                       [--expires 7d|never] [--password pw] [--no-open] [--no-index]
-#   planpage.sh list
+#   planpage.sh find <query>       # search pages by slug/title, prints matches only
+#   planpage.sh list               # full table of pages
 #   planpage.sh unpublish <slug>
-#   planpage.sh index          # regenerate + republish the index page only
+#   planpage.sh index              # regenerate + republish the index page only
 set -euo pipefail
 
 ZIPLINE_URL="${ZIPLINE_URL:-}"
 ZIPLINE_TOKEN="${ZIPLINE_TOKEN:-}"
 RENDER_URL="${PLANPAGE_RENDER_URL:-}"
 DEFAULT_EXPIRY="${PLANPAGE_DEFAULT_EXPIRY:-}"
-REGISTRY="${PLANPAGE_REGISTRY:-$HOME/.planpage/registry.tsv}"
+FOLDER_NAME="${PLANPAGE_FOLDER:-planpage}"
 INDEX_SLUG="${PLANPAGE_INDEX_SLUG:-plans}"
 
 die() { echo "planpage: $*" >&2; exit 1; }
@@ -32,21 +39,62 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 [ -n "$ZIPLINE_URL" ] || die "ZIPLINE_URL is not set"
 [ -n "$ZIPLINE_TOKEN" ] || die "ZIPLINE_TOKEN is not set"
+command -v perl >/dev/null 2>&1 || die "perl is required"
 ZIPLINE_URL="${ZIPLINE_URL%/}"
 [ -n "$RENDER_URL" ] && RENDER_URL="${RENDER_URL%/}"
 
-mkdir -p "$(dirname "$REGISTRY")"
-touch "$REGISTRY"
+# ---------- API helpers ----------
 
-# ---------- helpers ----------
+api_get() { curl -fsS -H "authorization: $ZIPLINE_TOKEN" "$ZIPLINE_URL/api/$1"; }
+
+api_delete_file() { # api_delete_file <file-id>
+  curl -fsS -X DELETE -H "authorization: $ZIPLINE_TOKEN" \
+    "$ZIPLINE_URL/api/user/files/$1" >/dev/null 2>&1 || true
+}
+
+ensure_folder() { # prints the planpage folder id, creating the folder if needed
+  local fid
+  fid="$(api_get user/folders | PP_FOLDER="$FOLDER_NAME" perl -MJSON::PP -0777 -e '
+    my $d = decode_json(<STDIN>);
+    my ($f) = grep { $_->{name} eq $ENV{PP_FOLDER} } @$d;
+    print $f->{id} if $f;')"
+  if [ -z "$fid" ]; then
+    fid="$(curl -fsS -X POST -H "authorization: $ZIPLINE_TOKEN" \
+      -H "content-type: application/json" \
+      -d "{\"name\":\"$FOLDER_NAME\",\"isPublic\":false}" \
+      "$ZIPLINE_URL/api/user/folders" | perl -MJSON::PP -0777 -e '
+        print decode_json(<STDIN>)->{id};')"
+  fi
+  [ -n "$fid" ] || die "could not find or create Zipline folder '$FOLDER_NAME'"
+  echo "$fid"
+}
+
+folder_files() { # TSV: name, id, title, published(YYYY-MM-DD), expires(YYYY-MM-DD|never)
+  api_get user/folders | PP_FOLDER="$FOLDER_NAME" perl -MJSON::PP -0777 -e '
+    my $d = decode_json(<STDIN>);
+    my ($f) = grep { $_->{name} eq $ENV{PP_FOLDER} } @$d;
+    exit 0 unless $f;
+    for my $x (@{ $f->{files} || [] }) {
+      my $title = $x->{originalName} // $x->{name};
+      $title =~ s/\.html$//;
+      $title =~ s/[\t\r\n]/ /g;
+      printf "%s\t%s\t%s\t%s\t%s\n",
+        $x->{name}, $x->{id}, $title,
+        substr($x->{createdAt} // "", 0, 10),
+        $x->{deletesAt} ? substr($x->{deletesAt}, 0, 10) : "never";
+    }'
+}
+
+resolve_id() { # resolve_id <slug> — file id for slug.html in the folder, or empty
+  folder_files | awk -F'\t' -v n="$1.html" '$1 == n { print $2; exit }'
+}
+
+# ---------- misc helpers ----------
 
 json_get() { # json_get <key> — first string value of "key" from stdin
-  local key="$1"
-  if command -v jq >/dev/null 2>&1; then
-    jq -r ".files[0].$key // empty" 2>/dev/null || true
-  else
-    sed -n "s/.*\"$key\":\"\([^\"]*\)\".*/\1/p" | head -1
-  fi
+  perl -MJSON::PP -0777 -e '
+    my $d = decode_json(<STDIN>);
+    print $d->{files}[0]{$ARGV[0]} // "";' "$1"
 }
 
 page_url() { # page_url <name> — public rendered URL for a stored filename
@@ -57,20 +105,6 @@ page_url() { # page_url <name> — public rendered URL for a stored filename
   fi
 }
 
-registry_lookup() { # registry_lookup <slug> — prints full row or nothing
-  awk -F'\t' -v s="$1" '$1 == s' "$REGISTRY" | head -1
-}
-
-registry_remove() { # registry_remove <slug>
-  local tmp="$REGISTRY.tmp.$$"
-  awk -F'\t' -v s="$1" '$1 != s' "$REGISTRY" > "$tmp" && mv "$tmp" "$REGISTRY"
-}
-
-api_delete_file() { # api_delete_file <file-id>
-  curl -fsS -X DELETE -H "authorization: $ZIPLINE_TOKEN" \
-    "$ZIPLINE_URL/api/user/files/$1" >/dev/null 2>&1 || true
-}
-
 open_url() {
   case "$(uname -s)" in
     MINGW*|MSYS*|CYGWIN*) cmd.exe /c start "" "$1" >/dev/null 2>&1 || true ;;
@@ -79,13 +113,13 @@ open_url() {
   esac
 }
 
+html_escape() { echo "$1" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g'; }
+
 html_title() { # html_title <file> — contents of <title>, or basename
   local t
   t="$(tr -d '\n' < "$1" | sed -n 's:.*<title>\(.*\)</title>.*:\1:p' | head -1)"
   [ -n "$t" ] && echo "$t" || basename "$1" .html
 }
-
-html_escape() { echo "$1" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g'; }
 
 md_wrap() { # md_wrap <file.md> <title> — full styled HTML page on stdout
   local title_esc
@@ -149,18 +183,13 @@ regen_index() {
   local tmp="${TMPDIR:-/tmp}/planpage-index.$$.html"
   # locals matter: bash scopes dynamically, and without these the read loop
   # would clobber the caller do_publish's title/url before it echoes them
-  local now rows="" slug id title published expires url
+  local now rows="" name id title published expires
   now="$(date +%Y-%m-%d)"
-  # prune expired rows (best effort: relative expiries were resolved to dates at publish)
-  while IFS=$'\t' read -r slug id title published expires url; do
-    [ -n "$slug" ] || continue
-    [ "$slug" = "$INDEX_SLUG" ] && continue
-    if [ -n "$expires" ] && [ "$expires" != "never" ] && [[ "$expires" < "$now" ]]; then
-      registry_remove "$slug"
-      continue
-    fi
-    rows="$rows<tr><td><a href=\"$url\">$title</a></td><td><code>$slug</code></td><td>$published</td><td>${expires:-never}</td></tr>"
-  done < "$REGISTRY"
+  while IFS=$'\t' read -r name id title published expires; do
+    [ -n "$name" ] || continue
+    [ "$name" = "$INDEX_SLUG.html" ] && continue
+    rows="$rows<tr><td><a href=\"$(page_url "$name")\">$(html_escape "$title")</a></td><td><code>${name%.html}</code></td><td>$published</td><td>$expires</td></tr>"
+  done < <(folder_files | sort -t"$(printf '\t')" -k4,4r)
 
   cat > "$tmp" <<EOF
 <!doctype html>
@@ -230,7 +259,6 @@ do_publish() {
   local md_tmp=""
   case "$file" in
     *.md|*.markdown)
-      command -v perl >/dev/null 2>&1 || die "markdown mode requires perl"
       if [ -z "$title" ]; then
         title="$(sed -n 's/^#[[:space:]]\{1,\}\(.*\)$/\1/p' "$file" | head -1)"
         [ -n "$title" ] || title="$(basename "$file" | sed 's/\.[^.]*$//')"
@@ -242,16 +270,19 @@ do_publish() {
   esac
 
   [ -n "$title" ] || title="$(html_title "$file")"
+  # title travels as the multipart filename -> Zipline originalName;
+  # strip characters that break curl -F syntax or the TSV listing
+  local safe_title
+  safe_title="$(echo "$title" | tr -d '\t\r\n";\\')"
+
+  local fid
+  fid="$(ensure_folder)"
 
   # update-in-place: delete the previous file behind this slug first
   if [ -n "$slug" ]; then
-    local existing old_id
-    existing="$(registry_lookup "$slug")"
-    if [ -n "$existing" ]; then
-      old_id="$(echo "$existing" | cut -f2)"
-      [ -n "$old_id" ] && api_delete_file "$old_id"
-      registry_remove "$slug"
-    fi
+    local old_id
+    old_id="$(resolve_id "$slug")"
+    [ -n "$old_id" ] && api_delete_file "$old_id"
   fi
 
   local -a hdrs=(-H "authorization: $ZIPLINE_TOKEN")
@@ -259,37 +290,21 @@ do_publish() {
   [ -n "$slug" ] && hdrs+=(-H "x-zipline-filename: $slug")
   [ -n "$expires" ] && hdrs+=(-H "x-zipline-deletes-at: $expires")
   [ -n "$password" ] && hdrs+=(-H "x-zipline-password: $password")
+  hdrs+=(-H "x-zipline-folder: $fid" -H "x-zipline-original-name: true")
 
   # upload with a relative path: on Windows (Git Bash), MSYS path conversion
   # can't rewrite a Unix path embedded in curl's -F argument
   local resp
   resp="$(cd "$(dirname "$file")" && \
-    curl -fsS "${hdrs[@]}" -F "file=@$(basename "$file");type=text/html" "$ZIPLINE_URL/api/upload")" \
+    curl -fsS "${hdrs[@]}" \
+      -F "file=@$(basename "$file");type=text/html;filename=$safe_title.html" \
+      "$ZIPLINE_URL/api/upload")" \
     || die "upload failed (check ZIPLINE_URL/ZIPLINE_TOKEN)"
 
-  local name id url
+  local name url
   name="$(echo "$resp" | json_get name)"
-  id="$(echo "$resp" | json_get id)"
   [ -n "$name" ] || die "could not parse upload response: $resp"
   url="$(page_url "$name")"
-  [ -n "$slug" ] || slug="${name%.html}"
-
-  # resolve relative expiry (7d, 12h, 30m) to a date for the registry/index
-  local expires_date="never"
-  if [ -n "$expires" ]; then
-    local n unit secs=0
-    if [[ "$expires" =~ ^([0-9]+)([mhdw])$ ]]; then
-      n="${BASH_REMATCH[1]}"; unit="${BASH_REMATCH[2]}"
-      case "$unit" in m) secs=$((n*60));; h) secs=$((n*3600));; d) secs=$((n*86400));; w) secs=$((n*604800));; esac
-      expires_date="$(date -d "@$(( $(date +%s) + secs ))" +%Y-%m-%d 2>/dev/null \
-        || date -r "$(( $(date +%s) + secs ))" +%Y-%m-%d)"
-    else
-      expires_date="$expires"
-    fi
-  fi
-
-  printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
-    "$slug" "$id" "$title" "$(date +%Y-%m-%d)" "$expires_date" "$url" >> "$REGISTRY"
 
   [ -n "$md_tmp" ] && rm -f "$md_tmp"
   [ "$do_index" = 1 ] && regen_index
@@ -305,28 +320,37 @@ do_publish() {
 cmd="${1:-}"; shift || true
 case "$cmd" in
   publish)
-    [ $# -ge 1 ] || die "usage: planpage.sh publish <file.html> [options]"
+    [ $# -ge 1 ] || die "usage: planpage.sh publish <file.html|file.md> [options]"
     do_publish "$@"
     ;;
   list)
-    [ -s "$REGISTRY" ] || { echo "nothing published yet"; exit 0; }
+    rows="$(folder_files)"
+    [ -n "$rows" ] || { echo "nothing published yet"; exit 0; }
     printf '%-24s %-12s %-12s %s\n' "SLUG" "PUBLISHED" "EXPIRES" "URL"
-    while IFS=$'\t' read -r slug id title published expires url; do
-      [ -n "$slug" ] && printf '%-24s %-12s %-12s %s\n' "$slug" "$published" "$expires" "$url"
-    done < "$REGISTRY"
+    while IFS=$'\t' read -r name id title published expires; do
+      [ -n "$name" ] && printf '%-24s %-12s %-12s %s\n' \
+        "${name%.html}" "$published" "$expires" "$(page_url "$name")"
+    done <<< "$rows"
     ;;
   find|search)
     [ $# -ge 1 ] || die "usage: planpage.sh find <query>"
-    matches="$(awk -F'\t' -v q="$(echo "$*" | tr '[:upper:]' '[:lower:]')" \
-      'index(tolower($1 "\t" $3), q) { printf "%s\t%s\t%s\n", $1, $3, $6 }' "$REGISTRY")"
-    [ -n "$matches" ] && echo "$matches" || die "no published page matching: $*"
+    q="$(echo "$*" | tr '[:upper:]' '[:lower:]')"
+    found=0
+    while IFS=$'\t' read -r name id title published expires; do
+      [ -n "$name" ] || continue
+      hay="$(echo "${name%.html}	$title" | tr '[:upper:]' '[:lower:]')"
+      case "$hay" in *"$q"*)
+        printf '%s\t%s\t%s\n' "${name%.html}" "$title" "$(page_url "$name")"
+        found=1 ;;
+      esac
+    done < <(folder_files)
+    [ "$found" = 1 ] || die "no published page matching: $*"
     ;;
   unpublish)
     [ $# -ge 1 ] || die "usage: planpage.sh unpublish <slug>"
-    row="$(registry_lookup "$1")"
-    [ -n "$row" ] || die "no published page with slug '$1'"
-    api_delete_file "$(echo "$row" | cut -f2)"
-    registry_remove "$1"
+    fid_check="$(resolve_id "$1")"
+    [ -n "$fid_check" ] || die "no published page with slug '$1'"
+    api_delete_file "$fid_check"
     regen_index
     echo "unpublished: $1"
     ;;
@@ -335,6 +359,6 @@ case "$cmd" in
     echo "$(page_url "$INDEX_SLUG.html")"
     ;;
   *)
-    die "usage: planpage.sh {publish|list|unpublish|index}"
+    die "usage: planpage.sh {publish|find|list|unpublish|index}"
     ;;
 esac

@@ -14,7 +14,8 @@ https://shrt.zip/raw/auth-refactor-plan.html
 - **Markdown mode** — publish an existing `.md` file and it's converted to a styled page automatically
 - **Auto-generated index page** listing everything you've published
 - **Auto-opens** the published page in your browser
-- Works against any Zipline v4 instance; no server changes required
+- **No local state** — pages live in a dedicated Zipline folder with titles stored as metadata, so search, listing, and updates work identically from every machine that shares the token
+- Works against any Zipline v4 instance; no server changes required (needs `curl` + `perl`, both standard on Git Bash/macOS/Linux)
 
 ## Install
 
@@ -44,7 +45,7 @@ Optional:
 | `PLANPAGE_RENDER_URL` | Serve links from a CSP-stripped origin (enables JavaScript — see below) |
 | `PLANPAGE_DEFAULT_EXPIRY` | Default expiry for new pages, e.g. `7d` (default: never) |
 | `PLANPAGE_INDEX_SLUG` | Slug of the auto-generated index page (default: `plans`) |
-| `PLANPAGE_REGISTRY` | Registry file location (default: `~/.planpage/registry.tsv`) |
+| `PLANPAGE_FOLDER` | Zipline folder that holds the pages (default: `planpage`) |
 
 ## Use
 
