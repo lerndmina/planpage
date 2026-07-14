@@ -31,6 +31,16 @@ Publish self-contained HTML pages to the user's Zipline instance and return a sh
 - `--password` — protect sensitive pages (Zipline prompts viewers for it).
 - `--no-open` — skip auto-opening the page in the user's browser after publishing.
 
+### Markdown mode
+
+`publish` also accepts a `.md`/`.markdown` file directly — it is converted to a styled HTML page automatically (requires `perl`, present on Git Bash/macOS/Linux). The page title comes from the first `# ` heading unless `--title` is given.
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/skills/planpage/scripts/planpage.sh" publish notes.md --slug my-notes
+```
+
+Use markdown mode to publish an *existing* markdown file as-is (e.g. a plan the user already has on disk). The converter covers standard markdown: headings, lists, fenced code, tables, blockquotes, links, images, bold/italic. When you are authoring new content yourself, write HTML directly instead — you get the richer template (badges, step lists, collapsibles) and full layout control.
+
 ### Other commands
 
 ```bash

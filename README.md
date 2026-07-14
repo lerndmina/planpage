@@ -11,6 +11,7 @@ https://shrt.zip/raw/auth-refactor-plan.html
 - **Vanity slugs** with **update-in-place** — re-publishing the same slug keeps the same URL while Claude iterates
 - **Expiring links** (`7d`, `2w`, …) so old plans clean themselves up
 - **Password protection** for sensitive pages
+- **Markdown mode** — publish an existing `.md` file and it's converted to a styled page automatically
 - **Auto-generated index page** listing everything you've published
 - **Auto-opens** the published page in your browser
 - Works against any Zipline v4 instance; no server changes required
@@ -49,6 +50,7 @@ Optional:
 
 - `/planpage` — publish the plan from the current conversation
 - `/planpage path/to/file.html` — publish an existing file
+- `/planpage path/to/notes.md` — convert a markdown file to a styled page and publish it
 - `/planpage list` / `/planpage unpublish <slug>` — manage published pages
 - Or just ask: *"publish this as a page"*, *"planpage this research"*
 

@@ -28,6 +28,8 @@ INDEX_SLUG="${PLANPAGE_INDEX_SLUG:-plans}"
 
 die() { echo "planpage: $*" >&2; exit 1; }
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 [ -n "$ZIPLINE_URL" ] || die "ZIPLINE_URL is not set"
 [ -n "$ZIPLINE_TOKEN" ] || die "ZIPLINE_TOKEN is not set"
 ZIPLINE_URL="${ZIPLINE_URL%/}"
@@ -81,6 +83,64 @@ html_title() { # html_title <file> — contents of <title>, or basename
   local t
   t="$(tr -d '\n' < "$1" | sed -n 's:.*<title>\(.*\)</title>.*:\1:p' | head -1)"
   [ -n "$t" ] && echo "$t" || basename "$1" .html
+}
+
+html_escape() { echo "$1" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g'; }
+
+md_wrap() { # md_wrap <file.md> <title> — full styled HTML page on stdout
+  local title_esc
+  title_esc="$(html_escape "$2")"
+  cat <<EOF
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>$title_esc</title>
+<style>
+  :root {
+    --bg: #fafafa; --surface: #ffffff; --fg: #1a1a1a; --muted: #666a73;
+    --line: #e4e4e8; --accent: #4756e6; --accent-soft: #eef0ff; --code-bg: #f1f1f4;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #101014; --surface: #17171c; --fg: #e8e8ea; --muted: #9a9aa2;
+      --line: #2a2a31; --accent: #8b96ff; --accent-soft: #23244a; --code-bg: #202027;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+         font: 16px/1.65 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 46rem; margin: 0 auto; padding: 3rem 1.25rem 5rem; }
+  h1 { font-size: 1.9rem; line-height: 1.25; letter-spacing: -.02em; }
+  h2 { font-size: 1.25rem; margin: 2.5rem 0 .75rem; letter-spacing: -.01em; }
+  h3 { font-size: 1rem; margin: 1.75rem 0 .5rem; }
+  p { margin: .75rem 0; }
+  a { color: var(--accent); }
+  code { font: .85em ui-monospace, "Cascadia Code", Consolas, monospace;
+         background: var(--code-bg); padding: .12em .35em; border-radius: 5px; }
+  pre { background: var(--code-bg); border: 1px solid var(--line); border-radius: 10px;
+        padding: 1rem; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: .925rem; }
+  th { text-align: left; font-size: .72rem; text-transform: uppercase; letter-spacing: .06em;
+       color: var(--muted); padding: .45rem .7rem; border-bottom: 2px solid var(--line); }
+  td { padding: .55rem .7rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+  blockquote { margin: 1rem 0; padding: .6rem 1rem; border-left: 3px solid var(--accent);
+               background: var(--surface); border-radius: 0 8px 8px 0; color: var(--muted); }
+  hr { border: 0; border-top: 1px solid var(--line); margin: 2.5rem 0; }
+  ul, ol { padding-left: 1.4rem; }
+  li { margin: .3rem 0; }
+</style>
+</head>
+<body>
+<main>
+$(perl "$SCRIPT_DIR/md2html.pl" < "$1")
+</main>
+</body>
+</html>
+EOF
 }
 
 # ---------- index page ----------
@@ -165,6 +225,22 @@ do_publish() {
   done
   [ -f "$file" ] || die "file not found: $file"
   [ "$expires" = "never" ] && expires=""
+
+  # markdown mode: convert to a styled HTML page first
+  local md_tmp=""
+  case "$file" in
+    *.md|*.markdown)
+      command -v perl >/dev/null 2>&1 || die "markdown mode requires perl"
+      if [ -z "$title" ]; then
+        title="$(sed -n 's/^#[[:space:]]\{1,\}\(.*\)$/\1/p' "$file" | head -1)"
+        [ -n "$title" ] || title="$(basename "$file" | sed 's/\.[^.]*$//')"
+      fi
+      md_tmp="${TMPDIR:-/tmp}/planpage-md.$$.html"
+      md_wrap "$file" "$title" > "$md_tmp" || die "markdown conversion failed"
+      file="$md_tmp"
+      ;;
+  esac
+
   [ -n "$title" ] || title="$(html_title "$file")"
 
   # update-in-place: delete the previous file behind this slug first
@@ -215,6 +291,7 @@ do_publish() {
   printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
     "$slug" "$id" "$title" "$(date +%Y-%m-%d)" "$expires_date" "$url" >> "$REGISTRY"
 
+  [ -n "$md_tmp" ] && rm -f "$md_tmp"
   [ "$do_index" = 1 ] && regen_index
   [ "$do_open" = 1 ] && open_url "$url"
   if [ "$quiet" = 0 ]; then
