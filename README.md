@@ -48,11 +48,12 @@ Optional:
 
 ## Use
 
+- Just ask for a plan: *"plan out the auth refactor"* — the plan arrives as a published page instead of a markdown file
 - `/planpage` — publish the plan from the current conversation
 - `/planpage path/to/file.html` — publish an existing file
 - `/planpage path/to/notes.md` — convert a markdown file to a styled page and publish it
 - `/planpage list` / `/planpage unpublish <slug>` — manage published pages
-- Or just ask: *"publish this as a page"*, *"planpage this research"*
+- Or: *"publish this as a page"*, *"planpage this research"*
 
 ## How it works (and the JavaScript question)
 

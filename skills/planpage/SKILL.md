@@ -1,11 +1,11 @@
 ---
 name: planpage
-description: Publish a plan, report, or doc as a styled single-page HTML link on the user's Zipline instance. Use when the user asks to "publish this plan", "make a planpage", "share this as a page/link", or wants a plan as HTML instead of a markdown file. Requires ZIPLINE_URL and ZIPLINE_TOKEN in the environment.
+description: Create and publish plans, reports, and docs as styled single-page HTML links on the user's Zipline instance — the replacement for markdown plan files. Use whenever the user asks for a plan, design doc, proposal, review write-up, or research summary (deliver it as a published page, not a .md file), and whenever they ask to publish or share existing content as a page/link. Requires ZIPLINE_URL and ZIPLINE_TOKEN in the environment.
 ---
 
 # planpage
 
-Publish self-contained HTML pages to the user's Zipline instance and return a shareable link. The primary use case is implementation plans, but reports, research summaries, and one-off docs all work.
+Publish self-contained HTML pages to the user's Zipline instance and return a shareable link. This **replaces markdown plan files entirely**: when the user asks you to plan something, write up a design, or produce a report, the deliverable is a published planpage URL — do not write a `plan.md` into the repo unless the user explicitly asks for a file on disk. The same applies to research summaries, reviews, and one-off docs.
 
 ## Prerequisites
 
