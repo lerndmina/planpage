@@ -315,6 +315,12 @@ case "$cmd" in
       [ -n "$slug" ] && printf '%-24s %-12s %-12s %s\n' "$slug" "$published" "$expires" "$url"
     done < "$REGISTRY"
     ;;
+  find|search)
+    [ $# -ge 1 ] || die "usage: planpage.sh find <query>"
+    matches="$(awk -F'\t' -v q="$(echo "$*" | tr '[:upper:]' '[:lower:]')" \
+      'index(tolower($1 "\t" $3), q) { printf "%s\t%s\t%s\n", $1, $3, $6 }' "$REGISTRY")"
+    [ -n "$matches" ] && echo "$matches" || die "no published page matching: $*"
+    ;;
   unpublish)
     [ $# -ge 1 ] || die "usage: planpage.sh unpublish <slug>"
     row="$(registry_lookup "$1")"

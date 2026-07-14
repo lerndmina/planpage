@@ -26,7 +26,7 @@ Publish self-contained HTML pages to the user's Zipline instance and return a sh
 ### Options
 
 - `--slug` — custom slug; the page lives at `<origin>/<slug>.html`. **Omit it by default** so pages get random unguessable names — the index page already shows titles, and random names avoid collisions. Pass a slug only when the user explicitly asks for a memorable URL.
-- Re-publishing with `--slug` set to a page's existing name **updates in place**: the old file is deleted and the URL stays stable. This works for random names too — when iterating on an already-published page, look up its name in the registry (`planpage.sh list`, or the URL you returned earlier) and pass that as `--slug`.
+- Re-publishing with `--slug` set to a page's existing name **updates in place**: the old file is deleted and the URL stays stable. This works for random names too — when iterating on an already-published page whose URL isn't in context, run `planpage.sh find "<title words>"` (matches slug + title, prints only the matching slug/title/URL) and pass the returned slug as `--slug`. Don't use `list` for lookups; it dumps every page.
 - `--expires` — relative expiry like `12h`, `7d`, `2w`; `never` disables. Defaults to `PLANPAGE_DEFAULT_EXPIRY` if set, otherwise never.
 - `--password` — protect sensitive pages (Zipline prompts viewers for it).
 - `--no-open` — skip auto-opening the page in the user's browser after publishing.
@@ -44,7 +44,8 @@ Use markdown mode to publish an *existing* markdown file as-is (e.g. a plan the 
 ### Other commands
 
 ```bash
-planpage.sh list               # table of published pages
+planpage.sh find <query>       # search published pages by slug/title, prints matches only
+planpage.sh list               # full table of published pages (only when the user asks)
 planpage.sh unpublish <slug>   # delete a page (and refresh the index)
 planpage.sh index              # regenerate + republish the index page
 ```
