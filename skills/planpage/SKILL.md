@@ -13,17 +13,21 @@ Publish self-contained HTML pages to the user's Zipline instance and return a sh
 
 ## Workflow
 
-1. **Author the page** — write a complete, self-contained HTML file (see Authoring rules below). Write it to a temp/scratch location, not the user's repo.
+1. **Author a content fragment** — inner HTML only, no doctype/head/body/styles (see Authoring rules below). The script wraps it in shared chrome: base stylesheet, a site header with navigation back to the index, and a footer carrying the sources you pass and the publish date. Write the fragment to a temp/scratch location, not the user's repo.
 2. **Publish it**:
 
    ```bash
-   bash "${CLAUDE_PLUGIN_ROOT}/skills/planpage/scripts/planpage.sh" publish <file.html> \
+   bash "${CLAUDE_PLUGIN_ROOT}/skills/planpage/scripts/planpage.sh" publish <fragment.html> \
+     [--title "Page title"] [--source "Label|https://url"]... \
      [--slug <name>] [--expires 7d] [--password <pw>] [--no-open]
    ```
 
 3. **Return the link** — the script prints the final URL on its last line. Give that URL to the user as the deliverable. If `PLANPAGE_RENDER_URL` is set and the proxy uses the README's config, swapping the link's `.html` for `.txt` serves the page source as plain text — worth mentioning when the user wants to inspect or copy the markup.
 
 ### Options
+
+- `--title` — page title (stored server-side, shown on the index). Defaults to the fragment's first `<h1>`.
+- `--source "Label|https://url"` — repeatable; each becomes a link in the footer's Sources section. Pass one per source you drew on (docs, issues, discussions) so readers can verify claims.
 
 - `--slug` — custom slug; the page lives at `<origin>/<slug>.html`. **Omit it by default** so pages get random unguessable names — the index page already shows titles, and random names avoid collisions. Pass a slug only when the user explicitly asks for a memorable URL.
 - Re-publishing with `--slug` set to a page's existing name **updates in place**: the old file is deleted and the URL stays stable. This works for random names too — when iterating on an already-published page whose URL isn't in context, run `planpage.sh find "<title words>"` (matches slug + title, prints only the matching slug/title/URL) and pass the returned slug as `--slug`. Don't use `list` for lookups; it dumps every page.
@@ -61,10 +65,12 @@ Every publish also regenerates an **index page** (slug `plans` by default) listi
 
 **Always, regardless of mode:**
 
-- One fully self-contained file: inline all CSS; no external stylesheets, fonts, or trackers. External images only if the user supplied the URL.
-- Start from `assets/template.html` (same directory tree as this file) — replace the `{{...}}` placeholders and cut sections that don't apply. Deviate freely for non-plan content, but keep its conventions: light/dark via `prefers-color-scheme`, system font stack, ~46rem measure, `<meta name="robots" content="noindex">`.
-- Set a real `<title>` — it's stored on the Zipline server as the page's searchable title and shown on the index page.
+- **Write a fragment, not a document**: inner HTML only — no `<!doctype>`, `<html>`, `<head>`, `<body>`, and no `<style>` boilerplate. The chrome (stylesheet, header nav, footer) is the script's job. Start from `assets/template.html` (same directory tree as this file): replace the `{{...}}` placeholders, cut sections that don't apply, deviate freely for non-plan content.
+- Styled building blocks the chrome provides: `.meta` (info row under the h1), `.badge ok|warn|risk|info`, `ol.steps` (numbered step list with connectors), `details > summary` + `div.body` (collapsibles), tables, `blockquote`, `pre/code`. Small page-specific `<style>` or inline SVG inside the fragment is fine when the content needs something extra; external stylesheets/fonts/trackers are not.
+- Start the fragment with an `<h1>` — it becomes the page title (or pass `--title`), stored server-side and shown on the index.
+- Pass the sources you drew on via repeated `--source "Label|url"` flags rather than writing your own sources section — the footer renders them.
 - These pages are public-by-obscurity links unless password-protected. Don't put secrets (tokens, internal hostnames, credentials) in a page; warn the user and use `--password` if the content is sensitive.
+- **Full-page escape hatch**: a file starting with `<!doctype` or `<html` is published exactly as-is — no chrome, no `--source` support. Use only when a page genuinely can't live inside the standard shell (custom app-like demos); you then own all styling and should include the header/footer conventions yourself if appropriate.
 
 ## Content guidance for plans
 

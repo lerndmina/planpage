@@ -5,6 +5,11 @@
 # folder, and find/list/index/update-in-place all query the API. No local
 # state, so any machine with the same ZIPLINE_TOKEN sees the same pages.
 #
+# Pages are authored as CONTENT FRAGMENTS (inner HTML only). The script wraps
+# them in shared chrome: base stylesheet, a header with navigation back to the
+# index page, and a footer with optional sources. A file that already starts
+# with <!doctype or <html is published as-is with no chrome (escape hatch).
+#
 # Requires: bash, curl, perl (JSON parsing + markdown mode).
 #
 # Required env:
@@ -16,9 +21,12 @@
 #   PLANPAGE_DEFAULT_EXPIRY  default deletes-at for pages, e.g. 7d (default: never)
 #   PLANPAGE_FOLDER          Zipline folder that holds the pages (default: planpage)
 #   PLANPAGE_INDEX_SLUG      slug of the auto-generated index page (default: plans)
+#   PLANPAGE_SITE_NAME       brand shown in the page header (default: planpage)
 #
 # Usage:
-#   planpage.sh publish <file.html|file.md> [--slug my-plan] [--title "My plan"]
+#   planpage.sh publish <fragment.html|page.html|file.md>
+#                       [--slug my-plan] [--title "My plan"]
+#                       [--source "Label|https://url"]...
 #                       [--expires 7d|never] [--password pw] [--no-open] [--no-index]
 #   planpage.sh find <query>       # search pages by slug/title, prints matches only
 #   planpage.sh list               # full table of pages
@@ -32,6 +40,7 @@ RENDER_URL="${PLANPAGE_RENDER_URL:-}"
 DEFAULT_EXPIRY="${PLANPAGE_DEFAULT_EXPIRY:-}"
 FOLDER_NAME="${PLANPAGE_FOLDER:-planpage}"
 INDEX_SLUG="${PLANPAGE_INDEX_SLUG:-plans}"
+SITE_NAME="${PLANPAGE_SITE_NAME:-planpage}"
 
 die() { echo "planpage: $*" >&2; exit 1; }
 
@@ -71,6 +80,7 @@ ensure_folder() { # prints the planpage folder id, creating the folder if needed
 
 folder_files() { # TSV: name, id, title, published(YYYY-MM-DD), expires(YYYY-MM-DD|never)
   api_get user/folders | PP_FOLDER="$FOLDER_NAME" perl -MJSON::PP -0777 -e '
+    binmode STDOUT, ":utf8";
     my $d = decode_json(<STDIN>);
     my ($f) = grep { $_->{name} eq $ENV{PP_FOLDER} } @$d;
     exit 0 unless $f;
@@ -115,15 +125,33 @@ open_url() {
 
 html_escape() { echo "$1" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g'; }
 
-html_title() { # html_title <file> — contents of <title>, or basename
+is_full_page() { head -c 512 "$1" | grep -qi '<!doctype\|<html'; }
+
+html_unescape() { echo "$1" | sed 's/&lt;/</g; s/&gt;/>/g; s/&amp;/\&/g'; }
+
+html_title() { # html_title <file> — <title> of a full page as plain text, or basename
   local t
   t="$(tr -d '\n' < "$1" | sed -n 's:.*<title>\(.*\)</title>.*:\1:p' | head -1)"
-  [ -n "$t" ] && echo "$t" || basename "$1" .html
+  [ -n "$t" ] && html_unescape "$t" || basename "$1" .html
 }
 
-md_wrap() { # md_wrap <file.md> <title> — full styled HTML page on stdout
-  local title_esc
+fragment_title() { # fragment_title <file> — first <h1> as plain text, or basename
+  local t
+  t="$(tr -d '\n' < "$1" | sed -n 's:.*<h1[^>]*>\(.*\)</h1>.*:\1:p' | head -1 | sed 's/<[^>]*>//g')"
+  [ -n "$t" ] && html_unescape "$t" || basename "$1" | sed 's/\.[^.]*$//'
+}
+
+# ---------- page chrome ----------
+
+# wrap_page <fragment-file> <title>
+# Reads the content fragment and emits the full page: base stylesheet, site
+# header with a link to the index, the fragment inside <main>, and a footer
+# with sources (from $SOURCES_HTML) and the publish date.
+wrap_page() {
+  local title_esc index_url now
   title_esc="$(html_escape "$2")"
+  index_url="$(page_url "$INDEX_SLUG.html")"
+  now="$(date +%Y-%m-%d)"
   cat <<EOF
 <!doctype html>
 <html lang="en">
@@ -135,115 +163,169 @@ md_wrap() { # md_wrap <file.md> <title> — full styled HTML page on stdout
 <style>
   :root {
     --bg: #fafafa; --surface: #ffffff; --fg: #1a1a1a; --muted: #666a73;
-    --line: #e4e4e8; --accent: #4756e6; --accent-soft: #eef0ff; --code-bg: #f1f1f4;
+    --line: #e4e4e8; --accent: #4756e6; --accent-soft: #eef0ff;
+    --ok: #1a7f4b; --ok-soft: #e4f5ec; --warn: #955d00; --warn-soft: #fdf2dd;
+    --risk: #b3261e; --risk-soft: #fdecea; --code-bg: #f1f1f4;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #101014; --surface: #17171c; --fg: #e8e8ea; --muted: #9a9aa2;
-      --line: #2a2a31; --accent: #8b96ff; --accent-soft: #23244a; --code-bg: #202027;
+      --line: #2a2a31; --accent: #8b96ff; --accent-soft: #23244a;
+      --ok: #58c48c; --ok-soft: #143526; --warn: #e2b45c; --warn-soft: #3a2d12;
+      --risk: #f2827a; --risk-soft: #3d1a17; --code-bg: #202027;
     }
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--fg);
+  body { margin: 0; background: var(--bg); color: var(--fg); min-height: 100vh;
+         display: flex; flex-direction: column;
          font: 16px/1.65 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
-  main { max-width: 46rem; margin: 0 auto; padding: 3rem 1.25rem 5rem; }
-  h1 { font-size: 1.9rem; line-height: 1.25; letter-spacing: -.02em; }
+
+  header.site { border-bottom: 1px solid var(--line); }
+  header.site .shell { max-width: 46rem; margin: 0 auto; padding: .7rem 1.25rem;
+    display: flex; justify-content: space-between; align-items: center; }
+  header.site .brand { font-weight: 700; font-size: .9rem; letter-spacing: .02em;
+    color: var(--muted); text-decoration: none; }
+  header.site .nav-index { font-size: .85rem; font-weight: 600; color: var(--accent);
+    background: var(--accent-soft); padding: .3rem .8rem; border-radius: 99px;
+    text-decoration: none; }
+  header.site .nav-index:hover { text-decoration: underline; }
+
+  main { flex: 1; width: 100%; max-width: 46rem; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
+  main > h1:first-child { margin-top: 0; }
+
+  footer.site { border-top: 1px solid var(--line); }
+  footer.site .shell { max-width: 46rem; margin: 0 auto; padding: 1.5rem 1.25rem 2rem; }
+  footer.site .sources h2 { font-size: .8rem; text-transform: uppercase;
+    letter-spacing: .06em; color: var(--muted); margin: 0 0 .5rem; }
+  footer.site .sources ul { margin: 0 0 1.25rem; padding-left: 1.25rem; font-size: .9rem; }
+  footer.site .sources li { margin: .25rem 0; }
+  footer.site .colophon { color: var(--muted); font-size: .8rem; margin: 0; }
+  footer.site .colophon a { color: var(--muted); }
+
+  h1 { font-size: 1.9rem; line-height: 1.25; margin: 0 0 .5rem; letter-spacing: -.02em; }
   h2 { font-size: 1.25rem; margin: 2.5rem 0 .75rem; letter-spacing: -.01em; }
   h3 { font-size: 1rem; margin: 1.75rem 0 .5rem; }
   p { margin: .75rem 0; }
   a { color: var(--accent); }
+  .meta { color: var(--muted); font-size: .875rem; display: flex; gap: 1rem;
+          flex-wrap: wrap; margin-bottom: 2rem; }
+
+  .badge { display: inline-block; font-size: .75rem; font-weight: 600; padding: .1rem .55rem;
+           border-radius: 99px; vertical-align: 2px; }
+  .badge.ok { color: var(--ok); background: var(--ok-soft); }
+  .badge.warn { color: var(--warn); background: var(--warn-soft); }
+  .badge.risk { color: var(--risk); background: var(--risk-soft); }
+  .badge.info { color: var(--accent); background: var(--accent-soft); }
+
+  details { border: 1px solid var(--line); border-radius: 10px; background: var(--surface);
+            margin: .75rem 0; }
+  details summary { cursor: pointer; padding: .8rem 1rem; font-weight: 600; user-select: none; }
+  details[open] summary { border-bottom: 1px solid var(--line); }
+  details .body { padding: .25rem 1rem .9rem; }
+
   code { font: .85em ui-monospace, "Cascadia Code", Consolas, monospace;
          background: var(--code-bg); padding: .12em .35em; border-radius: 5px; }
   pre { background: var(--code-bg); border: 1px solid var(--line); border-radius: 10px;
         padding: 1rem; overflow-x: auto; }
   pre code { background: none; padding: 0; }
+
   table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: .925rem; }
   th { text-align: left; font-size: .72rem; text-transform: uppercase; letter-spacing: .06em;
        color: var(--muted); padding: .45rem .7rem; border-bottom: 2px solid var(--line); }
   td { padding: .55rem .7rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+
+  ol.steps { padding-left: 0; counter-reset: step; list-style: none; }
+  ol.steps > li { counter-increment: step; position: relative; padding: 0 0 1.1rem 2.6rem; }
+  ol.steps > li::before { content: counter(step); position: absolute; left: 0; top: .05rem;
+    width: 1.7rem; height: 1.7rem; border-radius: 50%; background: var(--accent-soft);
+    color: var(--accent); font-weight: 700; font-size: .85rem;
+    display: flex; align-items: center; justify-content: center; }
+  ol.steps > li:not(:last-child)::after { content: ""; position: absolute; left: .82rem;
+    top: 1.95rem; bottom: .15rem; width: 2px; background: var(--line); }
+
   blockquote { margin: 1rem 0; padding: .6rem 1rem; border-left: 3px solid var(--accent);
                background: var(--surface); border-radius: 0 8px 8px 0; color: var(--muted); }
   hr { border: 0; border-top: 1px solid var(--line); margin: 2.5rem 0; }
   ul, ol { padding-left: 1.4rem; }
   li { margin: .3rem 0; }
+  img { max-width: 100%; }
 </style>
 </head>
 <body>
+<header class="site">
+  <div class="shell">
+    <a class="brand" href="$index_url">$(html_escape "$SITE_NAME")</a>
+    <a class="nav-index" href="$index_url">All pages</a>
+  </div>
+</header>
 <main>
-$(perl "$SCRIPT_DIR/md2html.pl" < "$1")
+$(cat "$1")
 </main>
+<footer class="site">
+  <div class="shell">
+$SOURCES_HTML
+    <p class="colophon">Published $now &middot; <a href="$index_url">All pages</a> &middot; $(html_escape "$SITE_NAME")</p>
+  </div>
+</footer>
 </body>
 </html>
 EOF
 }
 
+build_sources_html() { # build_sources_html "Label|url" ... -> sets SOURCES_HTML
+  SOURCES_HTML=""
+  [ $# -gt 0 ] || return 0
+  local s label url items=""
+  for s in "$@"; do
+    case "$s" in
+      *"|"*) label="${s%%|*}"; url="${s#*|}" ;;
+      *) label="$s"; url="$s" ;;
+    esac
+    label="$(echo "$label" | sed 's/^ *//; s/ *$//')"
+    url="$(echo "$url" | sed 's/^ *//; s/ *$//')"
+    items="$items<li><a href=\"$(html_escape "$url")\">$(html_escape "$label")</a></li>"
+  done
+  SOURCES_HTML="    <section class=\"sources\"><h2>Sources</h2><ul>$items</ul></section>"
+}
+
 # ---------- index page ----------
 
 regen_index() {
-  local tmp="${TMPDIR:-/tmp}/planpage-index.$$.html"
+  local frag="${TMPDIR:-/tmp}/planpage-index-frag.$$.html"
+  local page="${TMPDIR:-/tmp}/planpage-index.$$.html"
   # locals matter: bash scopes dynamically, and without these the read loop
   # would clobber the caller do_publish's title/url before it echoes them
-  local now rows="" name id title published expires
-  now="$(date +%Y-%m-%d)"
+  local rows="" name id title published expires
   while IFS=$'\t' read -r name id title published expires; do
     [ -n "$name" ] || continue
     [ "$name" = "$INDEX_SLUG.html" ] && continue
     rows="$rows<tr><td><a href=\"$(page_url "$name")\">$(html_escape "$title")</a></td><td><code>${name%.html}</code></td><td>$published</td><td>$expires</td></tr>"
   done < <(folder_files | sort -t"$(printf '\t')" -k4,4r)
 
-  cat > "$tmp" <<EOF
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="robots" content="noindex">
-<title>Published pages</title>
-<style>
-  :root { --bg:#fafafa; --fg:#1a1a1a; --muted:#666; --line:#e2e2e2; --accent:#4756e6; }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg:#111114; --fg:#e8e8ea; --muted:#9a9aa2; --line:#2a2a30; --accent:#8b96ff; }
-  }
-  * { box-sizing: border-box; }
-  body { margin:0; background:var(--bg); color:var(--fg);
-         font:16px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
-  main { max-width:56rem; margin:0 auto; padding:3rem 1.25rem; }
-  h1 { font-size:1.6rem; margin:0 0 .25rem; }
-  p.sub { color:var(--muted); margin:0 0 2rem; }
-  table { width:100%; border-collapse:collapse; }
-  th { text-align:left; font-size:.75rem; text-transform:uppercase; letter-spacing:.06em;
-       color:var(--muted); padding:.5rem .75rem; border-bottom:2px solid var(--line); }
-  td { padding:.65rem .75rem; border-bottom:1px solid var(--line); }
-  a { color:var(--accent); text-decoration:none; }
-  a:hover { text-decoration:underline; }
-  code { font:0.85em ui-monospace,Consolas,monospace; color:var(--muted); }
-</style>
-</head>
-<body>
-<main>
+  cat > "$frag" <<EOF
 <h1>Published pages</h1>
-<p class="sub">Generated by planpage on $now</p>
 <table>
 <thead><tr><th>Page</th><th>Slug</th><th>Published</th><th>Expires</th></tr></thead>
 <tbody>$rows</tbody>
 </table>
-</main>
-</body>
-</html>
 EOF
-  do_publish "$tmp" --slug "$INDEX_SLUG" --title "Published pages" --expires never --no-open --no-index --quiet
-  rm -f "$tmp"
+  SOURCES_HTML="" wrap_page "$frag" "Published pages" > "$page"
+  rm -f "$frag"
+  do_publish "$page" --slug "$INDEX_SLUG" --title "Published pages" --expires never --no-open --no-index --quiet
+  rm -f "$page"
 }
 
 # ---------- publish ----------
 
 do_publish() {
   local file="" slug="" title="" expires="$DEFAULT_EXPIRY" password="" do_open=1 do_index=1 quiet=0
+  local -a sources=()
   file="$1"; shift
   while [ $# -gt 0 ]; do
     case "$1" in
       --slug) slug="$2"; shift 2 ;;
       --title) title="$2"; shift 2 ;;
+      --source) sources+=("$2"); shift 2 ;;
       --expires) expires="$2"; shift 2 ;;
       --password) password="$2"; shift 2 ;;
       --no-open) do_open=0; shift ;;
@@ -255,21 +337,35 @@ do_publish() {
   [ -f "$file" ] || die "file not found: $file"
   [ "$expires" = "never" ] && expires=""
 
-  # markdown mode: convert to a styled HTML page first
-  local md_tmp=""
+  local tmp=""
+
+  # markdown mode: convert to an HTML fragment first
   case "$file" in
     *.md|*.markdown)
       if [ -z "$title" ]; then
         title="$(sed -n 's/^#[[:space:]]\{1,\}\(.*\)$/\1/p' "$file" | head -1)"
         [ -n "$title" ] || title="$(basename "$file" | sed 's/\.[^.]*$//')"
       fi
-      md_tmp="${TMPDIR:-/tmp}/planpage-md.$$.html"
-      md_wrap "$file" "$title" > "$md_tmp" || die "markdown conversion failed"
-      file="$md_tmp"
+      tmp="${TMPDIR:-/tmp}/planpage-md.$$.html"
+      perl "$SCRIPT_DIR/md2html.pl" < "$file" > "$tmp" || die "markdown conversion failed"
+      file="$tmp"
       ;;
   esac
 
-  [ -n "$title" ] || title="$(html_title "$file")"
+  # wrap fragments in the shared chrome; full pages pass through untouched
+  if is_full_page "$file"; then
+    [ -n "$title" ] || title="$(html_title "$file")"
+    [ ${#sources[@]} -eq 0 ] || die "--source requires a fragment (full pages own their chrome)"
+  else
+    [ -n "$title" ] || title="$(fragment_title "$file")"
+    build_sources_html ${sources[@]+"${sources[@]}"}
+    local wrapped="${TMPDIR:-/tmp}/planpage-page.$$.html"
+    wrap_page "$file" "$title" > "$wrapped"
+    [ -n "$tmp" ] && rm -f "$tmp"
+    tmp="$wrapped"
+    file="$wrapped"
+  fi
+
   # title travels as the multipart filename -> Zipline originalName;
   # strip characters that break curl -F syntax or the TSV listing
   local safe_title
@@ -306,7 +402,7 @@ do_publish() {
   [ -n "$name" ] || die "could not parse upload response: $resp"
   url="$(page_url "$name")"
 
-  [ -n "$md_tmp" ] && rm -f "$md_tmp"
+  [ -n "$tmp" ] && rm -f "$tmp"
   [ "$do_index" = 1 ] && regen_index
   [ "$do_open" = 1 ] && open_url "$url"
   if [ "$quiet" = 0 ]; then
@@ -320,7 +416,7 @@ do_publish() {
 cmd="${1:-}"; shift || true
 case "$cmd" in
   publish)
-    [ $# -ge 1 ] || die "usage: planpage.sh publish <file.html|file.md> [options]"
+    [ $# -ge 1 ] || die "usage: planpage.sh publish <fragment.html|page.html|file.md> [options]"
     do_publish "$@"
     ;;
   list)
