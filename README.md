@@ -7,7 +7,7 @@ A [Claude Code](https://claude.com/claude-code) plugin that publishes plans, rep
 Ask Claude to "publish this plan" and get back something like:
 
 ```
-https://shrt.zip/raw/auth-refactor-plan.html
+https://your.zipline.host/raw/auth-refactor-plan.html
 ```
 
 - **Vanity slugs** with **update-in-place** — re-publishing the same slug keeps the same URL while Claude iterates
