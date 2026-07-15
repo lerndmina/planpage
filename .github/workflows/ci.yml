@@ -1,0 +1,22 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: ShellCheck
+        run: shellcheck skills/planpage/scripts/planpage.sh
+      - name: Perl syntax
+        run: perl -c skills/planpage/scripts/md2html.pl
+      - name: Bash syntax
+        run: bash -n skills/planpage/scripts/planpage.sh
+      - name: Plugin manifests parse
+        run: |
+          python3 -m json.tool .claude-plugin/plugin.json > /dev/null
+          python3 -m json.tool .claude-plugin/marketplace.json > /dev/null

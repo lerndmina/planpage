@@ -2,6 +2,8 @@
 
 A [Claude Code](https://claude.com/claude-code) plugin that publishes plans, reports, and docs as **styled single-page HTML links** on your own [Zipline](https://github.com/diced/zipline) instance — instead of leaving markdown files scattered around your repo.
 
+![A published planpage](docs/screenshot.png)
+
 Ask Claude to "publish this plan" and get back something like:
 
 ```
@@ -11,6 +13,8 @@ https://shrt.zip/raw/auth-refactor-plan.html
 - **Vanity slugs** with **update-in-place** — re-publishing the same slug keeps the same URL while Claude iterates
 - **Expiring links** (`7d`, `2w`, …) so old plans clean themselves up
 - **Password protection** for sensitive pages
+- **Shared chrome, fragment authoring** — agents write inner HTML only; every page gets the header/index nav, auto table of contents, reading time, footer sources, OpenGraph link previews, favicon, print styles, and mobile layout from the publish script
+- **Theme toggle, copy-code buttons, and auto-mermaid** on JS-enabled render origins
 - **Markdown mode** — publish an existing `.md` file and it's converted to a styled page automatically
 - **Auto-generated index page** listing everything you've published
 - **Auto-opens** the published page in your browser
