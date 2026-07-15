@@ -86,7 +86,10 @@ ensure_folder() { # prints the planpage folder id, creating the folder if needed
 
 # The page title (and optional description, separated by ||) travels as the
 # upload's originalName, so all metadata lives on the server.
-folder_files() { # TSV: name, id, title, description, published(YYYY-MM-DD), expires(YYYY-MM-DD|never)
+# Description is the LAST column because it is the only one that can be empty:
+# bash `read` with a tab IFS collapses consecutive tabs, so an empty field
+# anywhere else would shift every column after it.
+folder_files() { # TSV: name, id, title, published(YYYY-MM-DD), expires(YYYY-MM-DD|never), description
   api_get user/folders | PP_FOLDER="$FOLDER_NAME" perl -MJSON::PP -0777 -e '
     binmode STDOUT, ":utf8";
     my $d = decode_json(<STDIN>);
@@ -98,9 +101,10 @@ folder_files() { # TSV: name, id, title, description, published(YYYY-MM-DD), exp
       $meta =~ s/[\t\r\n]/ /g;
       my ($title, $desc) = split /\|\|/, $meta, 2;
       printf "%s\t%s\t%s\t%s\t%s\t%s\n",
-        $x->{name}, $x->{id}, $title, $desc // "",
+        $x->{name}, $x->{id}, $title,
         substr($x->{createdAt} // "", 0, 10),
-        $x->{deletesAt} ? substr($x->{deletesAt}, 0, 10) : "never";
+        $x->{deletesAt} ? substr($x->{deletesAt}, 0, 10) : "never",
+        $desc // "";
     }'
 }
 
@@ -133,6 +137,18 @@ open_url() {
 }
 
 html_escape() { echo "$1" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g; s/"/\&quot;/g'; }
+
+ascii_meta() { # ascii_meta <text> — ASCII-safe metadata for the multipart filename
+  echo "$1" | perl -CSD -pe '
+    s/[\x{2014}\x{2013}\x{2212}]/-/g;      # em dash, en dash, minus
+    s/[\x{2018}\x{2019}]/\x27/g;           # curly single quotes
+    s/[\x{201C}\x{201D}]//g;               # curly double quotes (quotes are stripped anyway)
+    s/\x{2026}/.../g;                      # ellipsis
+    s/\x{00D7}/x/g;                        # multiplication sign
+    s/[\x{2192}\x{2794}]/->/g;             # arrows
+    s/[^\x00-\x7F]//g;                     # drop any other non-ASCII
+  ' | tr -d '\t\r\n";\\|'
+}
 
 html_unescape() { echo "$1" | sed 's/&lt;/</g; s/&gt;/>/g; s/&quot;/"/g; s/&amp;/\&/g'; }
 
@@ -457,7 +473,7 @@ regen_index() {
   # locals matter: bash scopes dynamically, and without these the read loop
   # would clobber the caller do_publish's title/url before it echoes them
   local rows="" name id title desc published expires month prev_month="" desc_html search_html=""
-  while IFS=$'\t' read -r name id title desc published expires; do
+  while IFS=$'\t' read -r name id title published expires desc; do
     [ -n "$name" ] || continue
     [ "$name" = "$INDEX_SLUG.html" ] && continue
     month="${published%-*}"
@@ -468,7 +484,7 @@ regen_index() {
     desc_html=""
     [ -n "$desc" ] && desc_html="<div class=\"desc\">$(html_escape "$desc")</div>"
     rows="$rows<tr class=\"page\"><td><a href=\"$(page_url "$name")\">$(html_escape "$title")</a>$desc_html</td><td><code>${name%.html}</code></td><td>$published</td><td>$expires</td></tr>"
-  done < <(folder_files | sort -t"$(printf '\t')" -k5,5r -k1,1)
+  done < <(folder_files | sort -t"$(printf '\t')" -k4,4r -k1,1)
 
   if [ -n "$RENDER_URL" ]; then
     search_html='<input id="pp-search" type="search" placeholder="Filter pages&hellip;" aria-label="Filter pages">
@@ -575,11 +591,13 @@ do_publish() {
   fi
 
   # title (+ optional description after ||) travels as the multipart filename
-  # -> Zipline originalName; strip characters that break curl -F or the TSV
+  # -> Zipline originalName. Multipart header values are latin-1/ASCII by
+  # spec: raw UTF-8 arrives server-side as U+FFFD, so transliterate typography
+  # to ASCII and drop the rest (the page HTML itself keeps real unicode).
   local safe_meta
-  safe_meta="$(echo "$title" | tr -d '\t\r\n";\\|')"
+  safe_meta="$(ascii_meta "$title")"
   if [ -n "$DESCRIPTION" ]; then
-    safe_meta="$safe_meta||$(echo "$DESCRIPTION" | tr -d '\t\r\n";\\|')"
+    safe_meta="$safe_meta||$(ascii_meta "$DESCRIPTION")"
   fi
 
   local fid
@@ -641,7 +659,7 @@ case "$cmd" in
     [ -n "$rows" ] || { echo "nothing published yet"; exit 0; }
     printf '%-24s %-12s %-12s %s\n' "SLUG" "PUBLISHED" "EXPIRES" "URL"
     # shellcheck disable=SC2034  # id/title/desc are positional, unused here
-    while IFS=$'\t' read -r name id title desc published expires; do
+    while IFS=$'\t' read -r name id title published expires desc; do
       [ -n "$name" ] && printf '%-24s %-12s %-12s %s\n' \
         "${name%.html}" "$published" "$expires" "$(page_url "$name")"
     done <<< "$rows"
@@ -651,7 +669,7 @@ case "$cmd" in
     q="$(echo "$*" | tr '[:upper:]' '[:lower:]')"
     found=0
     # shellcheck disable=SC2034  # id/published/expires are positional, unused here
-    while IFS=$'\t' read -r name id title desc published expires; do
+    while IFS=$'\t' read -r name id title published expires desc; do
       [ -n "$name" ] || continue
       hay="$(echo "${name%.html}	$title	$desc" | tr '[:upper:]' '[:lower:]')"
       case "$hay" in *"$q"*)
