@@ -30,6 +30,16 @@ claude plugin install planpage@planpage
 
 ## Setup
 
+### The easy way
+
+```
+/planpage-setup
+```
+
+Claude walks you through it interactively: asks for your Zipline URL and token, validates them against the API, writes your settings, publishes a self-expiring test page to prove rendering works, and — if you want JS-enabled pages — takes your domain and hands you the exact Caddy block (or applies it, if you give it access to the box). Optional preferences (default expiry, site name, favicon) at the end.
+
+### The manual way
+
 1. In your Zipline dashboard, copy your API token (avatar → *Manage Account* → *Copy Token*).
 2. Make these available in Claude Code's environment — e.g. in `~/.claude/settings.json`:
 
@@ -53,6 +63,7 @@ Optional:
 
 ## Use
 
+- `/planpage-setup` — first-run interactive setup (see above)
 - Just ask for a plan: *"plan out the auth refactor"* — the plan arrives as a published page instead of a markdown file
 - `/planpage` — publish the plan from the current conversation
 - `/planpage path/to/file.html` — publish an existing file
