@@ -2,7 +2,15 @@
 description: Interactive setup for planpage — connect your Zipline instance, verify publishing, and optionally configure a JS-enabled render origin
 ---
 
-Walk the user through setting up planpage end to end. Be conversational and do one phase at a time — validate each phase before moving to the next. Use AskUserQuestion where a choice has fixed options; use plain questions for free-text answers like URLs. Never print the token back to the user or into logs; it is only ever sent to their own Zipline instance.
+Walk the user through setting up planpage end to end. This is a **guided flow: you own it from Phase 0 through Phase 7 in a single continuous session**. The only reason to end your turn is that a question to the user is pending; the moment you have their answer, act on it and drive straight into the next step — never stop after a round of questions, never ask "shall I continue?", never summarize progress and wait. Setup is only finished when Phase 7's wrap-up has been delivered; if you are about to end your turn earlier and no question is pending, that is a bug — keep going.
+
+Rules of engagement:
+
+- Announce each phase as you enter it ("Phase 3 of 7 — saving your config") so the user can see the flow progressing.
+- Validate each phase's outcome before moving on; on failure, fix or re-ask within the phase rather than aborting the flow.
+- Use AskUserQuestion where a choice has fixed options; use plain questions for free-text answers like URLs. Batch the questions a phase needs into one round where possible.
+- Optional phases (5 and 6) are still mandatory to *offer*: ask explicitly, and a "no" means you move to the next phase, not end the session.
+- Never print the token back to the user or into logs; it is only ever sent to their own Zipline instance.
 
 ## Phase 0 — current state
 
@@ -73,9 +81,19 @@ Ask if they want it. If yes:
 3. Offer both paths: they apply it themselves and tell you when done, **or** — if they offer SSH/config access — you apply it, validate the proxy config, and reload gracefully. Never restart shared infrastructure without their explicit go-ahead.
 4. Verify: `curl -sI https://<domain>/<name>.html` for the Phase 4 test page → expect `200`, `text/html`, and **no** `Content-Security-Policy` header. Only after that passes, add `PLANPAGE_RENDER_URL=https://<domain>` to the same settings.json env block.
 
-## Phase 6 — optional preferences
+## Phase 6 — sharing and preferences
 
-Offer (AskUserQuestion, multiSelect) the optional env vars, with the default noted: `PLANPAGE_DEFAULT_EXPIRY` (e.g. `7d`; default never), `PLANPAGE_SITE_NAME` (header brand; default `planpage`), `PLANPAGE_FAVICON` (emoji; default 📋), `PLANPAGE_FOLDER` (Zipline folder; default `planpage`), `PLANPAGE_INDEX_SLUG` (default `plans`). Write any chosen values into the env block.
+Two question rounds, both explicit — do not skip either.
+
+**Round 1 — shared instance (AskUserQuestion).** Ask: "Does anyone else use planpage on this Zipline instance?" with options like *Just me* / *Others, with their own accounts* / *Others, sharing this token*. Then apply:
+
+- **Just me** → no extra vars; say the defaults are fine.
+- **Own accounts** → Zipline folders are per-account, so `PLANPAGE_FOLDER` doesn't collide — but the filename namespace is instance-wide and every user's index defaults to the same `plans` slug. Set a unique `PLANPAGE_INDEX_SLUG` for them (suggest `<username>-plans` using their Zipline username from Phase 2), and warn that memorable `--slug` names can collide with other users too (default random slugs are always safe).
+- **Shared token** → everyone shares one account, so set **both** a distinct `PLANPAGE_FOLDER` (suggest `planpage-<name>`) and a distinct `PLANPAGE_INDEX_SLUG` (suggest `<name>-plans`), otherwise users share one folder and overwrite each other's index.
+
+Write the chosen values into the env block immediately, then continue to round 2.
+
+**Round 2 — cosmetics (AskUserQuestion, multiSelect).** Offer the remaining optional env vars with defaults noted: `PLANPAGE_DEFAULT_EXPIRY` (e.g. `7d`; default never), `PLANPAGE_SITE_NAME` (header brand; default `planpage`), `PLANPAGE_FAVICON` (emoji; default 📋). Collect values for whichever they pick and write them into the env block.
 
 ## Phase 7 — wrap up
 

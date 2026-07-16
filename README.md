@@ -61,6 +61,11 @@ Optional:
 | `PLANPAGE_DEFAULT_EXPIRY` | Default expiry for new pages, e.g. `7d` (default: never) |
 | `PLANPAGE_INDEX_SLUG` | Slug of the auto-generated index page (default: `plans`) |
 | `PLANPAGE_FOLDER` | Zipline folder that holds the pages (default: `planpage`) |
+| `PLANPAGE_SITE_NAME` | Brand shown in the page header (default: `planpage`) |
+| `PLANPAGE_FAVICON` | Emoji used as the pages' favicon (default: 📋) |
+| `PLANPAGE_CACHE_DIR` | Cache for the mermaid validator (default: `~/.cache/planpage`) |
+
+**Multiple people on one Zipline instance:** Zipline folders are scoped to the account, so users with their own tokens never collide on `PLANPAGE_FOLDER`. What *is* shared instance-wide is the filename namespace (`/raw/<name>.html`) — and everyone's index page defaults to the same `plans` slug. Give each user a unique `PLANPAGE_INDEX_SLUG` (e.g. `adam-plans`), and avoid generic `--slug` names for the same reason (the default random slugs are always safe). If several people share one token, set a distinct `PLANPAGE_FOLDER` per person too, since they'd otherwise share one folder and one index.
 
 ## Use
 

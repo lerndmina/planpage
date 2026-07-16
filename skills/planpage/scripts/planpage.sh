@@ -691,11 +691,13 @@ do_publish() {
   # upload with a relative path: on Windows (Git Bash), MSYS path conversion
   # can't rewrite a Unix path embedded in curl's -F argument
   local resp
+  local fail_hint="check ZIPLINE_URL/ZIPLINE_TOKEN"
+  [ -n "$slug" ] && fail_hint="$fail_hint; or slug \"$slug\" may be taken by another user on this instance (filenames are instance-wide)"
   resp="$(cd "$(dirname "$file")" && \
     curl -fsS "${hdrs[@]}" \
       -F "file=@$(basename "$file");type=text/html;filename=\"$safe_meta.html\"" \
       "$ZIPLINE_URL/api/upload")" \
-    || die "upload failed (check ZIPLINE_URL/ZIPLINE_TOKEN)"
+    || die "upload failed ($fail_hint)"
 
   local name url
   name="$(echo "$resp" | json_get name)"
