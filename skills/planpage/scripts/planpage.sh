@@ -24,6 +24,7 @@
 #   PLANPAGE_INDEX_SLUG      slug of the auto-generated index page (default: plans)
 #   PLANPAGE_SITE_NAME       brand shown in the page header (default: planpage)
 #   PLANPAGE_FAVICON         emoji used as the pages' favicon (default: 📋)
+#   PLANPAGE_CACHE_DIR       cache for the mermaid validator (default: ~/.cache/planpage)
 #
 # Usage:
 #   planpage.sh publish <fragment.html|page.html|file.md>
@@ -31,6 +32,7 @@
 #                       [--description "One-line summary"]
 #                       [--source "Label|https://url"]...
 #                       [--expires 7d|never] [--password pw] [--no-open] [--no-index]
+#                       [--no-check]   # skip pre-upload mermaid validation
 #   planpage.sh find <query>       # search pages by slug/title/description
 #   planpage.sh url <slug>         # print a page's URL
 #   planpage.sh open <slug>        # open a page in the browser
@@ -47,6 +49,7 @@ FOLDER_NAME="${PLANPAGE_FOLDER:-planpage}"
 INDEX_SLUG="${PLANPAGE_INDEX_SLUG:-plans}"
 SITE_NAME="${PLANPAGE_SITE_NAME:-planpage}"
 FAVICON="${PLANPAGE_FAVICON:-📋}"
+CACHE_DIR="${PLANPAGE_CACHE_DIR:-$HOME/.cache/planpage}"
 
 die() { echo "planpage: $*" >&2; exit 1; }
 
@@ -166,6 +169,43 @@ fragment_title() { # fragment_title <file> — first <h1> as plain text, or base
   if [ -n "$t" ]; then html_unescape "$t"; else basename "$1" | sed 's/\.[^.]*$//'; fi
 }
 
+# ---------- mermaid validation ----------
+
+# check_mermaid <html-file>
+# Parses every <pre class="mermaid"> block with the real mermaid parser
+# (node + mermaid@11 in a cache dir, installed on first use) and dies with
+# the parse errors if any block is invalid — so bad diagrams are caught
+# before upload, not by readers. Infrastructure problems (no node, install
+# failure) only warn: publishing must not depend on npm being healthy.
+check_mermaid() {
+  grep -q 'class="[^"]*mermaid' "$1" || return 0
+  if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
+    echo "planpage: warning: mermaid blocks not validated (node/npm not found)" >&2
+    return 0
+  fi
+  local vdir="$CACHE_DIR/mermaid-check"
+  if [ ! -d "$vdir/node_modules/mermaid" ] || [ ! -d "$vdir/node_modules/happy-dom" ]; then
+    echo "planpage: installing mermaid validator (one-time)..." >&2
+    mkdir -p "$vdir"
+    if ! npm install --prefix "$vdir" --no-audit --no-fund --loglevel=error \
+        mermaid@11 happy-dom >/dev/null 2>&1; then
+      echo "planpage: warning: mermaid validator install failed; skipping check" >&2
+      return 0
+    fi
+  fi
+  # run the checker from the cache dir so bare imports resolve against
+  # the node_modules installed there
+  cp "$SCRIPT_DIR/check-mermaid.mjs" "$vdir/check-mermaid.mjs"
+  local out rc=0
+  out="$(node "$vdir/check-mermaid.mjs" "$1" 2>&1)" || rc=$?
+  case "$rc" in
+    0) ;;
+    1) die "page has invalid mermaid — fix the diagram source and re-publish (--no-check to override):
+$out" ;;
+    *) echo "planpage: warning: mermaid check skipped ($out)" >&2 ;;
+  esac
+}
+
 # ---------- page chrome ----------
 
 # inject_toc <fragment-file>
@@ -229,7 +269,25 @@ import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.mi
 const dark = document.documentElement.dataset.theme
   ? document.documentElement.dataset.theme === "dark"
   : matchMedia("(prefers-color-scheme: dark)").matches;
-mermaid.initialize({ startOnLoad: true, theme: dark ? "dark" : "neutral" });
+mermaid.initialize({ startOnLoad: false, theme: dark ? "dark" : "neutral" });
+// parse each block first: an invalid one degrades to its source + the parse
+// error instead of mermaid'"'"'s "Syntax error in text" bomb
+const nodes = [];
+for (const el of document.querySelectorAll(".mermaid")) {
+  const src = el.textContent;
+  try { await mermaid.parse(src); nodes.push(el); }
+  catch (e) {
+    const box = document.createElement("div");
+    box.className = "mermaid-error";
+    const msg = document.createElement("p");
+    msg.textContent = "Diagram failed to render: " + String(e.message ?? e).split("\n")[0];
+    const pre = document.createElement("pre");
+    pre.textContent = src.trim();
+    box.append(msg, pre);
+    el.replaceWith(box);
+  }
+}
+if (nodes.length) await mermaid.run({ nodes });
 </script>'
   fi
 
@@ -254,7 +312,9 @@ mermaid.initialize({ startOnLoad: true, theme: dark ? "dark" : "neutral" });
   var shell = document.querySelector("header.site .shell");
   if (shell) shell.appendChild(btn);
 
-  document.querySelectorAll("main pre").forEach(function (pre) {
+  // never touch mermaid blocks: this classic script runs before the mermaid
+  // module, and injected button text would corrupt the diagram source
+  document.querySelectorAll("main pre:not(.mermaid)").forEach(function (pre) {
     var txt = pre.innerText;
     var b = document.createElement("button");
     b.className = "copy-btn";
@@ -390,6 +450,12 @@ $desc_meta
     display: flex; align-items: center; justify-content: center; }
   ol.steps > li:not(:last-child)::after { content: ""; position: absolute; left: .82rem;
     top: 1.95rem; bottom: .15rem; width: 2px; background: var(--line); }
+
+  .mermaid-error { border: 1px solid var(--risk); border-radius: 10px;
+    background: var(--risk-soft); padding: .75rem 1rem; margin: 1rem 0; }
+  .mermaid-error > p { color: var(--risk); font-size: .85rem; font-weight: 600;
+    margin: 0 0 .5rem; }
+  .mermaid-error > pre { margin: 0; }
 
   blockquote { margin: 1rem 0; padding: .6rem 1rem; border-left: 3px solid var(--accent);
                background: var(--surface); border-radius: 0 8px 8px 0; color: var(--muted); }
@@ -537,7 +603,7 @@ EOF
 # ---------- publish ----------
 
 do_publish() {
-  local file="" slug="" title="" expires="$DEFAULT_EXPIRY" password="" do_open=1 do_index=1 quiet=0
+  local file="" slug="" title="" expires="$DEFAULT_EXPIRY" password="" do_open=1 do_index=1 quiet=0 do_check=1
   local -a sources=()
   DESCRIPTION=""
   file="$1"; shift
@@ -551,6 +617,7 @@ do_publish() {
       --password) password="$2"; shift 2 ;;
       --no-open) do_open=0; shift ;;
       --no-index) do_index=0; shift ;;
+      --no-check) do_check=0; shift ;;
       --quiet) quiet=1; shift ;;
       *) die "unknown option: $1" ;;
     esac
@@ -572,6 +639,10 @@ do_publish() {
       file="$tmp"
       ;;
   esac
+
+  # validate mermaid blocks before anything is uploaded (fragments and
+  # full pages alike); dies with the parse errors on failure
+  [ "$do_check" = 1 ] && check_mermaid "$file"
 
   # wrap fragments in the shared chrome; full pages pass through untouched
   if is_full_page "$file"; then

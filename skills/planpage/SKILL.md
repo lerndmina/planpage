@@ -35,6 +35,7 @@ Publish self-contained HTML pages to the user's Zipline instance and return a sh
 - `--expires` — relative expiry like `12h`, `7d`, `2w`; `never` disables. Defaults to `PLANPAGE_DEFAULT_EXPIRY` if set, otherwise never.
 - `--password` — protects the file, but protected files can't be served by the raw route at all: the returned link goes to Zipline's viewer (`/view/`), which prompts for the password and shows the page as source, not rendered. For sensitive content, prefer a random unguessable link with a short `--expires` instead; use `--password` only when the user insists.
 - `--no-open` — skip auto-opening the page in the user's browser after publishing.
+- `--no-check` — skip mermaid validation. Publish normally parses every `<pre class="mermaid">` block with the real mermaid parser **before uploading** and aborts with the per-block parse errors if any block is invalid — read the error, fix the diagram source in the fragment, and re-run publish. Only pass `--no-check` if the validator itself is broken (e.g. npm install fails offline), never to push through a syntax error.
 
 ### Markdown mode
 
@@ -64,7 +65,7 @@ Every publish also regenerates an **index page** (slug `plans` by default) listi
 **JavaScript depends on the deployment.** Check `PLANPAGE_RENDER_URL`:
 
 - **Not set** (stock Zipline): pages are served with `Content-Security-Policy: sandbox` — **no JavaScript executes**. Author pure HTML+CSS only. Use native `<details>/<summary>` for collapsible sections, CSS counters for step lists, and inline SVG for diagrams. Do not include `<script>` tags — they will silently do nothing.
-- **Set** (a cookie-isolated origin that strips the sandbox, per the README): links are served from that origin, scripts run, and you may use JS and interactivity when the page genuinely benefits. **Mermaid is first-class**: write a `<pre class="mermaid">` block with the diagram text and the chrome auto-loads the renderer, theme-matched — prefer this over hand-drawn SVG. The chrome also adds a theme toggle and copy buttons on code blocks automatically.
+- **Set** (a cookie-isolated origin that strips the sandbox, per the README): links are served from that origin, scripts run, and you may use JS and interactivity when the page genuinely benefits. **Mermaid is first-class**: write a `<pre class="mermaid">` block with the diagram text and the chrome auto-loads the renderer, theme-matched — prefer this over hand-drawn SVG. Publish validates every mermaid block before uploading and fails with the exact parse errors if a diagram is invalid; fix the block it names and re-publish. Common causes: unquoted `(){}[]|` or `"` inside node labels (wrap the label in double quotes: `A["label (with parens)"]`), and HTML entities — the block is decoded like browser textContent, so write `-->` literally, not `--&gt;`. The chrome also adds a theme toggle and copy buttons on code blocks automatically.
 
 **Always, regardless of mode:**
 

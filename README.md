@@ -15,6 +15,7 @@ https://your.zipline.host/raw/auth-refactor-plan.html
 - **Password protection** for sensitive pages
 - **Shared chrome, fragment authoring** — agents write inner HTML only; every page gets the header/index nav, auto table of contents, reading time, footer sources, OpenGraph link previews, favicon, print styles, and mobile layout from the publish script
 - **Theme toggle, copy-code buttons, and auto-mermaid** on JS-enabled render origins
+- **Mermaid validation before upload** — publish parses every `<pre class="mermaid">` block with the real mermaid parser (node + npm, one-time cached install) and aborts with the exact parse errors so the agent can fix the diagram; blocks that still fail in the browser degrade to a readable error + source instead of mermaid's syntax-error graphic
 - **Markdown mode** — publish an existing `.md` file and it's converted to a styled page automatically
 - **Auto-generated index page** listing everything you've published
 - **Auto-opens** the published page in your browser
