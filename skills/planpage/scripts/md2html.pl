@@ -2,8 +2,9 @@
 # md2html.pl — minimal markdown -> HTML body converter for planpage.
 # Reads markdown on stdin, writes body HTML on stdout.
 # Supported subset: #-###### headings, ``` fences, paragraphs, ul/ol lists
-# (single level), > blockquotes, | tables |, ---, `code`, **bold**, *italic*,
-# [links](url), ![images](url).
+# (single level), GFM task lists (- [ ] / - [x] -> ul.check, live checklists
+# on JS-enabled origins), > blockquotes, | tables |, ---, `code`, **bold**,
+# *italic*, [links](url), ![images](url).
 use strict;
 use warnings;
 
@@ -43,7 +44,7 @@ sub flush_para {
 }
 
 sub flush_list {
-    if ($list) { push @out, "</$list>"; $list = ''; }
+    if ($list) { push @out, $list eq 'ulcheck' ? '</ul>' : "</$list>"; $list = ''; }
 }
 
 sub flush_bq {
@@ -110,6 +111,13 @@ while ( my $line = <STDIN> ) {
     if ( $line =~ /^>\s?(.*)$/ ) { flush_para(); flush_list(); push @bq, $1; next; }
     flush_bq();
 
+    if ( $line =~ /^\s*[-*+]\s+\[([ xX])\]\s+(.*)$/ ) {    # GFM task list
+        flush_para();
+        my ( $mark, $item ) = ( $1, $2 );
+        if ( $list ne 'ulcheck' ) { flush_list(); push @out, '<ul class="check">'; $list = 'ulcheck'; }
+        push @out, ( $mark =~ /x/i ? '<li data-checked>' : '<li>' ) . inline($item) . '</li>';
+        next;
+    }
     if ( $line =~ /^\s*[-*+]\s+(.*)$/ ) {
         flush_para();
         my $item = $1;

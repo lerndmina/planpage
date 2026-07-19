@@ -1,0 +1,67 @@
+<h1>Widget gallery — everything interactive planpage can do</h1>
+<div class="meta">
+  <span>2026-07-19</span>
+  <span>planpage</span>
+  <span class="badge info">living docs</span>
+</div>
+
+<p>Every interactive widget the planpage chrome provides, in one page. Agents: author the markup shown in each section — the behavior, persistence, and styling are injected automatically. Everything you tick, pick, or type here saves in <em>your</em> browser; the <strong>Copy state</strong> button above serializes all of it as markdown to paste back to an agent.</p>
+
+<h2>Checklist <span class="count" data-count="demo-check"></span></h2>
+<p>Markup: <code>&lt;ul class="check"&gt;</code> with plain <code>&lt;li&gt;</code> items (<code>&lt;li data-checked&gt;</code> pre-checks). The counter chip in this heading is <code>&lt;span class="count" data-count="demo-check"&gt;</code>.</p>
+<ul class="check" id="demo-check">
+  <li>Tick me — then reload the page and I stay ticked</li>
+  <li>Items can hold <code>code</code>, <strong>bold</strong>, and <a href="#">links</a></li>
+  <li data-checked>This one was pre-checked at publish time</li>
+  <li>Ticking updates the sticky progress bar at the top</li>
+</ul>
+
+<h2>Step tracker</h2>
+<p>Markup: <code>&lt;ol class="steps track"&gt;</code> — the normal step list, but the number badge is a button: click it to cycle <em>pending → doing → done → blocked</em>.</p>
+<ol class="steps track">
+  <li><strong>Write the fragment</strong><br>Author inner HTML using the widget classes.</li>
+  <li><strong>Publish it</strong><br>The chrome injects the runtime when it sees widget markup.</li>
+  <li><strong>Work the plan</strong><br>Statuses persist here and feed the progress bar.</li>
+</ol>
+
+<h2>Decision picker</h2>
+<p>Markup: <code>&lt;table class="decide" data-name="…"&gt;</code>, one row per option — click a row to choose it, click again to unpick.</p>
+<table class="decide" data-name="Deploy window">
+  <thead><tr><th>Option</th><th>Trade-off</th></tr></thead>
+  <tbody>
+    <tr><td>Tuesday night</td><td>Low traffic, on-call is fresh</td></tr>
+    <tr><td>Sunday morning</td><td>Lowest traffic, but weekend pages hurt</td></tr>
+    <tr><td>Next sprint</td><td>No rush, risks drifting</td></tr>
+  </tbody>
+</table>
+
+<h2>Notes</h2>
+<p>One <code>&lt;div class="notes"&gt;</code> renders the box below <em>and</em> adds the "✎ note" button you can see on every heading of this page. Notes land in Copy state quoted under their section.</p>
+<div class="notes" data-name="General feedback"></div>
+
+<h2>Tabs</h2>
+<p>Markup: <code>&lt;div class="tabs"&gt;</code> with <code>&lt;section title="…"&gt;</code> children. The active tab is remembered; without JS they stack as titled sections.</p>
+<div class="tabs">
+  <section title="macOS"><p><code>brew install thing</code> — then restart the app.</p></section>
+  <section title="Linux"><p><code>apt install thing</code> — then <code>systemctl restart thing</code>.</p></section>
+  <section title="Windows"><p><code>winget install thing</code> — then sign out and back in.</p></section>
+</div>
+
+<h2>Sortable table</h2>
+<p>Markup: <code>&lt;table class="sortable"&gt;</code> — click a header to sort (numeric-aware); tables with 10+ rows also get a filter box.</p>
+<table class="sortable">
+  <thead><tr><th>Service</th><th>p95 ms</th><th>Errors/day</th></tr></thead>
+  <tbody>
+    <tr><td>gateway</td><td>112</td><td>3</td></tr>
+    <tr><td>auth</td><td>48</td><td>0</td></tr>
+    <tr><td>billing</td><td>310</td><td>12</td></tr>
+    <tr><td>search</td><td>95</td><td>7</td></tr>
+  </tbody>
+</table>
+
+<h2>Sticky collapsible</h2>
+<p>Any <code>&lt;details id="…"&gt;</code> remembers whether you left it open.</p>
+<details id="demo-details">
+  <summary>Open me, reload, and I stay open <span class="badge ok">sticky</span></summary>
+  <div class="body"><p>State is view-only, so it is saved but deliberately excluded from Copy state.</p></div>
+</details>

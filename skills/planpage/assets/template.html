@@ -2,7 +2,11 @@
      No doctype/head/body: the publish script wraps this in shared chrome
      (base stylesheet, header with index nav, footer with sources).
      Available classes: .meta, .badge (ok|warn|risk|info), ol.steps,
-     details>summary+.body, table, blockquote, pre/code, hr. -->
+     details>summary+.body, table, blockquote, pre/code, hr.
+     Interactive widgets (JS mode, behavior injected — never write widget JS):
+     ul.check (checklist + progress bar), ol.steps.track (status per step),
+     table.decide (pick an option), div.notes (reader feedback), div.tabs,
+     table.sortable, details[id]. See SKILL.md "Interactive widgets". -->
 
 <h1>{{TITLE}}</h1>
 <div class="meta">

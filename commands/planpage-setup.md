@@ -97,6 +97,6 @@ Write the chosen values into the env block immediately, then continue to round 2
 
 ## Phase 7 — wrap up
 
-Summarize what's configured (URL, render origin or not, extras), remind them env changes apply to **new** sessions, and point them at usage: just ask for a plan, or `/planpage`, `/planpage list`. Clean up: unpublish the hello page or mention it self-expires.
+Summarize what's configured (URL, render origin or not, extras), remind them env changes apply to **new** sessions, and point them at usage: just ask for a plan, or `/planpage`, `/planpage list`. Suggest enabling auto-update so they get plugin fixes: `/plugin` → **Marketplaces** → **planpage** → **Enable auto-update** (third-party marketplaces don't auto-update by default; without it, publishing will still surface a daily update notice when a new version exists). Clean up: unpublish the hello page or mention it self-expires.
 
 $ARGUMENTS

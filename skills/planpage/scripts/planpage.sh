@@ -24,7 +24,8 @@
 #   PLANPAGE_INDEX_SLUG      slug of the auto-generated index page (default: plans)
 #   PLANPAGE_SITE_NAME       brand shown in the page header (default: planpage)
 #   PLANPAGE_FAVICON         emoji used as the pages' favicon (default: 📋)
-#   PLANPAGE_CACHE_DIR       cache for the mermaid validator (default: ~/.cache/planpage)
+#   PLANPAGE_CACHE_DIR       cache for the mermaid validator + update check (default: ~/.cache/planpage)
+#   PLANPAGE_NO_UPDATE_CHECK set to any value to disable the daily update check
 #
 # Usage:
 #   planpage.sh publish <fragment.html|page.html|file.md>
@@ -169,6 +170,51 @@ fragment_title() { # fragment_title <file> — first <h1> as plain text, or base
   if [ -n "$t" ]; then html_unescape "$t"; else basename "$1" | sed 's/\.[^.]*$//'; fi
 }
 
+# ---------- update check ----------
+
+# check_update — at most once a day, compare the installed plugin version
+# against master on GitHub. When a newer version exists, print a note to
+# stderr addressed to the AGENT running this command (it lands in the tool
+# output the agent reads), so the agent relays it to the user after the
+# current task. Must never block or break publishing: 2s network budget,
+# silent return on any failure.
+check_update() {
+  [ -n "${PLANPAGE_NO_UPDATE_CHECK:-}" ] && return 0
+  local manifest="$SCRIPT_DIR/../../../.claude-plugin/plugin.json"
+  [ -f "$manifest" ] || return 0
+  local stamp="$CACHE_DIR/update-check" now last=0
+  now="$(date +%s)"
+  [ -f "$stamp" ] && last="$(cat "$stamp" 2>/dev/null)"
+  case "$last" in ''|*[!0-9]*) last=0 ;; esac
+  [ $((now - last)) -lt 86400 ] && return 0
+  # stamp before the network call: offline retries cost 2s at most once a day
+  mkdir -p "$CACHE_DIR" 2>/dev/null || return 0
+  echo "$now" > "$stamp" 2>/dev/null || return 0
+  local local_v remote_v
+  local_v="$(perl -MJSON::PP -0777 -e \
+    'print eval { decode_json(<STDIN>)->{version} } // ""' < "$manifest" 2>/dev/null)"
+  remote_v="$(curl -fsS --max-time 2 \
+    "https://raw.githubusercontent.com/lerndmina/planpage/master/.claude-plugin/plugin.json" \
+    2>/dev/null | perl -MJSON::PP -0777 -e \
+    'print eval { decode_json(<STDIN>)->{version} } // ""' 2>/dev/null)"
+  # the remote string is untrusted input and lands in a message the agent
+  # acts on — accept a plain dotted number only
+  case "$local_v" in ''|*[!0-9.]*|.*|*.) return 0 ;; esac
+  case "$remote_v" in ''|*[!0-9.]*|.*|*.) return 0 ;; esac
+  perl -e '
+    my @l = split /\./, $ARGV[0]; my @r = split /\./, $ARGV[1];
+    for my $i (0 .. (@l > @r ? $#l : $#r)) {
+      my ($a, $b) = ($l[$i] // 0, $r[$i] // 0);
+      exit($a < $b ? 0 : 1) if $a != $b;   # exit 0 only when remote is newer
+    }
+    exit 1;' "$local_v" "$remote_v" || return 0
+  {
+    echo "planpage: update available — v$remote_v (installed: v$local_v)."
+    echo "planpage: note to the agent running this command: finish the current task first, then tell the user a planpage update is available. To stay current they can enable auto-update for the planpage marketplace (/plugin -> Marketplaces -> planpage -> Enable auto-update); updates take effect after a restart or /reload-plugins."
+  } >&2
+  return 0
+}
+
 # ---------- mermaid validation ----------
 
 # check_mermaid <html-file>
@@ -248,7 +294,7 @@ inject_toc() {
 # fragment inside <main>, and a footer with sources (from $SOURCES_HTML),
 # description meta (from $DESCRIPTION), reading time, and publish date.
 wrap_page() {
-  local title_esc index_url now words read_html="" desc_meta="" mermaid_js="" page_js=""
+  local title_esc index_url now words read_html="" desc_meta="" mermaid_js="" page_js="" widgets_js=""
   title_esc="$(html_escape "$2")"
   index_url="$(page_url "$INDEX_SLUG.html")"
   now="$(date +%Y-%m-%d)"
@@ -289,6 +335,16 @@ for (const el of document.querySelectorAll(".mermaid")) {
 }
 if (nodes.length) await mermaid.run({ nodes });
 </script>'
+  fi
+
+  # interactive widget runtime: inlined only when the page uses widget markup
+  # (ul.check, ol.steps.track, table.decide, div.tabs, table.sortable,
+  # div.notes, details[id]) and scripts can actually run
+  if [ -n "$RENDER_URL" ] && \
+     grep -qE 'class="[^"]*\b(check|track|decide|tabs|sortable|notes)\b|<details[^>]+id=' "$1"; then
+    widgets_js="<script>
+$(cat "$SCRIPT_DIR/../assets/widgets.js")
+</script>"
   fi
 
   if [ -n "$RENDER_URL" ]; then
@@ -451,6 +507,90 @@ $desc_meta
   ol.steps > li:not(:last-child)::after { content: ""; position: absolute; left: .82rem;
     top: 1.95rem; bottom: .15rem; width: 2px; background: var(--line); }
 
+  /* interactive widgets (behavior injected in JS mode; static styling always) */
+  ul.check { list-style: none; padding: 0; }
+  ul.check > li { margin: 0 0 .5rem; }
+  ul.check.js > li > label { display: flex; gap: .65rem; align-items: flex-start;
+    cursor: pointer; background: var(--surface); border: 1px solid var(--line);
+    border-radius: 10px; padding: .65rem .8rem; }
+  ul.check input[type="checkbox"] { width: 1.05rem; height: 1.05rem; margin-top: .22rem;
+    accent-color: var(--accent); flex-shrink: 0; }
+  ul.check input:checked + span { text-decoration: line-through; color: var(--muted); }
+  ul.check label:has(input:checked) { opacity: .72; }
+  ul.check:not(.js) > li { background: var(--surface); border: 1px solid var(--line);
+    border-radius: 10px; padding: .65rem .8rem .65rem 2.35rem; position: relative; }
+  ul.check:not(.js) > li::before { content: ""; position: absolute; left: .8rem;
+    top: .9rem; width: .85rem; height: .85rem; border: 2px solid var(--muted);
+    border-radius: 4px; }
+  ul.check:not(.js) > li[data-checked] { opacity: .72; text-decoration: line-through;
+    color: var(--muted); }
+  ul.check:not(.js) > li[data-checked]::before { background: var(--accent);
+    border-color: var(--accent); }
+
+  .count { font-size: .72rem; font-weight: 600; color: var(--accent);
+    background: var(--accent-soft); border-radius: 99px; padding: .1rem .55rem;
+    vertical-align: 2px; }
+  .count:empty { display: none; }
+
+  .pp-progress { position: sticky; top: 0; z-index: 5; background: var(--bg);
+    padding: .6rem 0 .5rem; margin-bottom: 1.25rem; }
+  .pp-progress .bar { height: 8px; border-radius: 99px; background: var(--line);
+    overflow: hidden; }
+  .pp-progress .bar > div { height: 100%; width: 0%; background: var(--accent);
+    border-radius: 99px; transition: width .25s ease; }
+  .pp-progress .row { display: flex; gap: .5rem; align-items: center; margin-top: .35rem; }
+  .pp-progress .label { font-size: .78rem; color: var(--muted); margin-right: auto; }
+  .pp-progress button { font-size: .72rem; background: var(--surface); color: var(--muted);
+    border: 1px solid var(--line); border-radius: 6px; padding: .2rem .6rem; cursor: pointer; }
+  .pp-progress button:hover { color: var(--accent); border-color: var(--accent); }
+
+  ol.steps.js > li::before { content: none; }
+  .step-btn { position: absolute; left: 0; top: .05rem; width: 1.7rem; height: 1.7rem;
+    border-radius: 50%; border: 0; background: var(--accent-soft); color: var(--accent);
+    font-weight: 700; font-size: .85rem; cursor: pointer; padding: 0; }
+  ol.steps > li[data-status="doing"] .step-btn { outline: 2px solid var(--accent); }
+  ol.steps > li[data-status="done"] .step-btn { background: var(--ok-soft); color: var(--ok); }
+  ol.steps > li[data-status="blocked"] .step-btn { background: var(--risk-soft); color: var(--risk); }
+  ol.steps > li[data-status="done"] { opacity: .75; }
+
+  table.decide.js tbody tr { cursor: pointer; }
+  table.decide tbody tr.picked { background: var(--accent-soft); }
+  table.decide td.pick { color: var(--accent); font-weight: 700; width: 1.3rem;
+    text-align: center; }
+
+  .note-btn { font-size: .68rem; font-weight: 600; margin-left: .5rem; vertical-align: 2px;
+    background: none; color: var(--muted); border: 1px solid var(--line); border-radius: 99px;
+    padding: .1rem .5rem; cursor: pointer; }
+  .note-btn:hover { color: var(--accent); border-color: var(--accent); }
+  .note-box { display: block; width: 100%; min-height: 3.2rem; font: inherit;
+    font-size: .9rem; line-height: 1.5; color: var(--fg); background: var(--surface);
+    border: 1px dashed var(--line); border-radius: 8px; padding: .5rem .7rem;
+    margin: .5rem 0 1rem; resize: vertical; }
+  .note-box:focus { border-style: solid; border-color: var(--accent); outline: none; }
+
+  .tabs { border: 1px solid var(--line); border-radius: 10px; background: var(--surface);
+    margin: 1rem 0; }
+  .tabs > nav { display: flex; gap: .25rem; flex-wrap: wrap; border-bottom: 1px solid var(--line);
+    padding: .35rem .5rem 0; }
+  .tabs > nav button { font: inherit; font-size: .85rem; font-weight: 600; color: var(--muted);
+    background: none; border: 0; border-bottom: 2px solid transparent;
+    padding: .45rem .8rem; cursor: pointer; }
+  .tabs > nav button.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tabs > section { padding: .25rem 1rem .75rem; }
+  .tabs.js > section:not(.active) { display: none; }
+  .tabs:not(.js) > section { border-bottom: 1px solid var(--line); }
+  .tabs:not(.js) > section:last-child { border-bottom: 0; }
+  .tabs:not(.js) > section::before { content: attr(title); display: block; font-weight: 700;
+    margin: .5rem 0 .25rem; }
+
+  table.sortable thead th { cursor: pointer; user-select: none; }
+  table.sortable thead th.asc::after { content: " ↑"; }
+  table.sortable thead th.desc::after { content: " ↓"; }
+  .pp-filter { width: 100%; margin: .5rem 0; padding: .45rem .8rem; font: inherit;
+    font-size: .9rem; color: var(--fg); background: var(--surface);
+    border: 1px solid var(--line); border-radius: 8px; }
+  .pp-filter:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+
   .mermaid-error { border: 1px solid var(--risk); border-radius: 10px;
     background: var(--risk-soft); padding: .75rem 1rem; margin: 1rem 0; }
   .mermaid-error > p { color: var(--risk); font-size: .85rem; font-weight: 600;
@@ -473,7 +613,8 @@ $desc_meta
   }
 
   @media print {
-    header.site, footer.site .colophon, nav.toc, .copy-btn, .theme-toggle { display: none; }
+    header.site, footer.site .colophon, nav.toc, .copy-btn, .theme-toggle,
+    .pp-progress, .note-btn, .pp-filter { display: none; }
     body { background: #fff; color: #000; }
     main { max-width: 100%; padding: 0; }
     a { color: inherit; }
@@ -499,6 +640,7 @@ $SOURCES_HTML
 </footer>
 $mermaid_js
 $page_js
+$widgets_js
 </body>
 </html>
 EOF
@@ -725,6 +867,8 @@ cmd="${1:-}"; shift || true
 case "$cmd" in
   publish)
     [ $# -ge 1 ] || die "usage: planpage.sh publish <fragment.html|page.html|file.md> [options]"
+    # before do_publish so the page URL stays the last line of output
+    check_update
     do_publish "$@"
     ;;
   list)

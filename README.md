@@ -15,6 +15,7 @@ https://your.zipline.host/raw/auth-refactor-plan.html
 - **Password protection** for sensitive pages
 - **Shared chrome, fragment authoring** — agents write inner HTML only; every page gets the header/index nav, auto table of contents, reading time, footer sources, OpenGraph link previews, favicon, print styles, and mobile layout from the publish script
 - **Theme toggle, copy-code buttons, and auto-mermaid** on JS-enabled render origins
+- **Interactive widgets** (JS-enabled origins) — persistent checklists with a progress bar, step status tracking, decision pickers, per-section reader notes, tabs, sortable tables, all authored as plain markup with behavior injected by the chrome; a whole-page **Copy state** button serializes every tick, choice, and note as markdown to paste back to the agent. Publish `skills/planpage/assets/widgets-demo.html` to see them all live
 - **Mermaid validation before upload** — publish parses every `<pre class="mermaid">` block with the real mermaid parser (node + npm, one-time cached install) and aborts with the exact parse errors so the agent can fix the diagram; blocks that still fail in the browser degrade to a readable error + source instead of mermaid's syntax-error graphic
 - **Markdown mode** — publish an existing `.md` file and it's converted to a styled page automatically
 - **Auto-generated index page** listing everything you've published
@@ -28,6 +29,10 @@ https://your.zipline.host/raw/auth-refactor-plan.html
 claude plugin marketplace add lerndmina/planpage
 claude plugin install planpage@planpage
 ```
+
+### Staying up to date
+
+Claude Code only auto-updates third-party plugins if you opt in: `/plugin` → **Marketplaces** → **planpage** → **Enable auto-update** (updates then apply on restart or `/reload-plugins`). As a fallback, publishing checks for a newer release at most once a day and leaves a note in the command output so the agent can let you know; set `PLANPAGE_NO_UPDATE_CHECK=1` to disable the check.
 
 ## Setup
 
