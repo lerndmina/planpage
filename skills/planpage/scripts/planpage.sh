@@ -17,7 +17,7 @@
 #   ZIPLINE_URL     e.g. https://shrt.zip (no trailing slash)
 #   ZIPLINE_TOKEN   a Zipline API token (Settings -> copy token)
 # Optional env:
-#   PLANPAGE_RENDER_URL      cookie-isolated unsandboxed origin, e.g. https://plans.wild.rip
+#   PLANPAGE_RENDER_URL      cookie-isolated unsandboxed origin, e.g. https://plans.example.com
 #                            (see README: Caddy/nginx strip the CSP sandbox there; enables JS)
 #   PLANPAGE_DEFAULT_EXPIRY  default deletes-at for pages, e.g. 7d (default: never)
 #   PLANPAGE_FOLDER          Zipline folder that holds the pages (default: planpage)

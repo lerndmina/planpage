@@ -79,6 +79,8 @@ Every publish also regenerates an **index page** (slug `plans` by default) listi
 - **Sortable table**: `<table class="sortable">` — click-to-sort headers; tables with 10+ rows also get a filter box.
 - **Sticky collapsibles**: any `details` with an `id` remembers its open/closed state.
 
+Complete working markup for every widget is in `assets/widgets-demo.html` (same directory tree as this file) — read it when unsure of the exact shape, and publish it as-is if the user wants a live demo page on their own instance.
+
 Use widgets when the page is something the reader *works through* (checklists, execution plans, decision reviews) — not decoration for ordinary prose. In sandboxed mode (no render origin) the same markup renders as clean static styling, so it is always safe to author.
 
 When you deliver a page with stateful widgets, add one line to your reply: progress saves in the reader's browser, and the **Copy state** button copies it as markdown to paste back into chat. When a user pastes such a blob (starts with `Page state — `), treat it as the plan's current status: the URL in its header identifies the page, and swapping the link's `.html` for `.txt` fetches the page source if you need to line the state up against the original items.
