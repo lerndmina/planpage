@@ -93,7 +93,7 @@ ensure_folder() { # prints the planpage folder id, creating the folder if needed
 # Description is the LAST column because it is the only one that can be empty:
 # bash `read` with a tab IFS collapses consecutive tabs, so an empty field
 # anywhere else would shift every column after it.
-folder_files() { # TSV: name, id, title, published(YYYY-MM-DD), expires(YYYY-MM-DD|never), description
+folder_files() { # TSV: name, id, title, published(ISO timestamp), expires(YYYY-MM-DD|never), description
   api_get user/folders | PP_FOLDER="$FOLDER_NAME" perl -MJSON::PP -0777 -e '
     binmode STDOUT, ":utf8";
     my $d = decode_json(<STDIN>);
@@ -106,7 +106,7 @@ folder_files() { # TSV: name, id, title, published(YYYY-MM-DD), expires(YYYY-MM-
       my ($title, $desc) = split /\|\|/, $meta, 2;
       printf "%s\t%s\t%s\t%s\t%s\t%s\n",
         $x->{name}, $x->{id}, $title,
-        substr($x->{createdAt} // "", 0, 10),
+        $x->{createdAt} // "",
         $x->{deletesAt} ? substr($x->{deletesAt}, 0, 10) : "never",
         $desc // "";
     }'
@@ -684,6 +684,7 @@ regen_index() {
   while IFS=$'\t' read -r name id title published expires desc; do
     [ -n "$name" ] || continue
     [ "$name" = "$INDEX_SLUG.html" ] && continue
+    published="${published:0:10}"
     month="${published%-*}"
     if [ "$month" != "$prev_month" ]; then
       rows="$rows<tr class=\"month\"><td colspan=\"4\">$(month_name "$month")</td></tr>"
@@ -878,7 +879,7 @@ case "$cmd" in
     # shellcheck disable=SC2034  # id/title/desc are positional, unused here
     while IFS=$'\t' read -r name id title published expires desc; do
       [ -n "$name" ] && printf '%-24s %-12s %-12s %s\n' \
-        "${name%.html}" "$published" "$expires" "$(page_url "$name")"
+        "${name%.html}" "${published:0:10}" "$expires" "$(page_url "$name")"
     done <<< "$rows"
     ;;
   find|search)
