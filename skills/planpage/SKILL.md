@@ -1,11 +1,13 @@
 ---
 name: planpage
-description: Create and publish plans, reports, and docs as styled single-page HTML links on the user's Zipline instance — the replacement for markdown plan files. Use whenever the user asks for a plan, design doc, proposal, review write-up, or research summary (deliver it as a published page, not a .md file), and whenever they ask to publish or share existing content as a page/link. Requires ZIPLINE_URL and ZIPLINE_TOKEN in the environment.
+description: THE required deliverable format for every plan, design doc, proposal, review write-up, or research summary — published as a styled single-page HTML link on the user's Zipline instance. Trigger the moment a task is plan-shaped ("help me plan", "design", "propose", "write up", plan mode, ExitPlanMode) and BEFORE presenting the plan in chat — the chat message carries the link plus a short summary; the page is the plan. Delivering a plan as chat prose only, or as a .md file, is a failure mode. Also use when asked to publish or share existing content as a page/link. Requires ZIPLINE_URL and ZIPLINE_TOKEN in the environment.
 ---
 
 # planpage
 
 Publish self-contained HTML pages to the user's Zipline instance and return a shareable link. This **replaces markdown plan files entirely**: when the user asks you to plan something, write up a design, or produce a report, the deliverable is a published planpage URL — do not write a `plan.md` into the repo unless the user explicitly asks for a file on disk. The same applies to research summaries, reviews, and one-off docs.
+
+**Timing:** publish *before* presenting the plan, not after. When asking the user to approve a plan (including plan mode / ExitPlanMode flows), the approval message should open with the published URL and a short summary — clarifying questions may come first, but the plan itself is never delivered as chat-only prose. Use the interactive widgets (step tracker, decision tables, checklists) so the page doubles as the execution tracker.
 
 ## Prerequisites
 
